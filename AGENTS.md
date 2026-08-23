@@ -264,6 +264,13 @@ Por fases. Al terminar cada una, `go build ./...` y `vue-tsc --noEmit` + `npm ru
 - Migraciones SQL manuales (no ORM)
 - Supabase Storage para archivos adjuntos
 
+### Operación — troubleshooting pooler
+- Si el backend local se cuelga tras "Migrations applied" o Railway no termina un deploy:
+  probar `echo > /dev/tcp/aws-0-us-west-2.pooler.supabase.com/6543` (transaction mode).
+  El 5432 (session mode) suele seguir disponible como fallback de diagnóstico.
+- Si Railway quedó con deploy fallido por una caída del pooler, el contenedor viejo sigue vivo:
+  disparar redeploy con un nuevo push a `main`.
+
 ### Deploy
 - Vercel (frontend SPA, rewrite rules para SPA routing + proxy API)
 - Railway (backend Go, Dockerfile multi-stage)
