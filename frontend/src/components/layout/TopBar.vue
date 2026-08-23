@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import IconButton from '@/components/ui/IconButton.vue'
 import Avatar from '@/components/ui/Avatar.vue'
 import { useDarkMode } from '@/composables/useDarkMode'
+import { useAuthStore } from '@/stores/auth'
 
 defineEmits<{
   (e: 'toggle-sidebar'): void
@@ -13,6 +14,7 @@ defineEmits<{
 const route = useRoute()
 const { isDark, toggle } = useDarkMode()
 const searchQuery = ref('')
+const auth = useAuthStore()
 </script>
 
 <template>
@@ -53,7 +55,7 @@ const searchQuery = ref('')
         />
       </div>
 
-      <Avatar name="Operador" size="sm" />
+      <Avatar :name="auth.user?.name || 'Operador'" size="sm" />
     </div>
   </header>
 </template>

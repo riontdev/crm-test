@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -70,13 +71,17 @@ func (h *AuthHandler) Login(c echo.Context) error {
 		Name:     sessionCookieName,
 		Value:    token,
 		Path:     "/",
-		MaxAge:   7 * 24 * 3600,
+		MaxAge:   int(auth.SessionDuration.Seconds()),
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		Secure:   secure,
 	})
 
-	return c.JSON(http.StatusOK, map[string]interface{}{"user": user})
+	expiresAt := time.Now().Add(auth.SessionDuration).UTC().Format(time.RFC3339)
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"user":               user,
+		"session_expires_at": expiresAt,
+	})
 }
 
 // Me returns the authenticated user.
@@ -91,7 +96,12 @@ func (h *AuthHandler) Me(c echo.Context) error {
 	if err != nil {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "usuario no encontrado"})
 	}
-	return c.JSON(http.StatusOK, map[string]interface{}{"user": user})
+
+	response := map[string]interface{}{"user": user}
+	if claims, ok := c.Get("claims").(*auth.Claims); ok && claims.ExpiresAt != nil {
+		response["session_expires_at"] = claims.ExpiresAt.Time.UTC().Format(time.RFC3339)
+	}
+	return c.JSON(http.StatusOK, response)
 }
 
 // Logout clears the session cookie.

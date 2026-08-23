@@ -10,6 +10,7 @@ export const useAuthStore = defineStore('auth', () => {
   const user = ref<User | null>(null)
   const initialized = ref(false)
   const loading = ref(false)
+  const sessionExpiresAt = ref<string | null>(null)
 
   const isAuthenticated = computed(() => !!user.value)
   const isAdmin = computed(() => user.value?.role === 'admin')
@@ -19,8 +20,10 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const res = await api.me()
       user.value = res.user
+      sessionExpiresAt.value = res.session_expires_at ?? null
     } catch {
       user.value = null
+      sessionExpiresAt.value = null
     } finally {
       initialized.value = true
     }
@@ -31,6 +34,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const res = await api.login(email, password)
       user.value = res.user
+      sessionExpiresAt.value = res.session_expires_at ?? null
       ui.success(`Bienvenido, ${res.user.name}`)
       return null
     } catch (e: any) {
@@ -49,6 +53,7 @@ export const useAuthStore = defineStore('auth', () => {
       // La sesión local se limpia igualmente
     }
     user.value = null
+    sessionExpiresAt.value = null
     ui.info('Sesión cerrada')
     router.push('/login')
   }
@@ -56,11 +61,12 @@ export const useAuthStore = defineStore('auth', () => {
   function handleUnauthorized() {
     if (!user.value) return
     user.value = null
+    sessionExpiresAt.value = null
     ui.error('Tu sesión expiró')
     router.push('/login')
   }
 
   window.addEventListener('crm:unauthorized', handleUnauthorized)
 
-  return { user, initialized, loading, isAuthenticated, isAdmin, init, login, logout }
+  return { user, initialized, loading, sessionExpiresAt, isAuthenticated, isAdmin, init, login, logout }
 })

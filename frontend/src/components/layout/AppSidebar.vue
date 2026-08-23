@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useConversationsStore } from '@/stores/conversations'
+import { useAuthStore } from '@/stores/auth'
 import IconButton from '@/components/ui/IconButton.vue'
 import Avatar from '@/components/ui/Avatar.vue'
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 interface Props {
   modelValue: boolean
@@ -16,6 +18,29 @@ const emit = defineEmits<{
 
 const route = useRoute()
 const store = useConversationsStore()
+const auth = useAuthStore()
+
+const showLogoutConfirm = ref(false)
+
+function close() {
+  emit('update:modelValue', false)
+}
+
+async function handleLogout() {
+  showLogoutConfirm.value = false
+  close()
+  await auth.logout()
+}
+
+const sessionRemainingLabel = computed(() => {
+  if (!auth.sessionExpiresAt) return ''
+  const ms = new Date(auth.sessionExpiresAt).getTime() - Date.now()
+  if (ms <= 0) return 'Sesión vencida'
+  const hours = Math.floor(ms / 3600000)
+  const minutes = Math.floor((ms % 3600000) / 60000)
+  if (hours > 0) return `Sesión activa ${hours}h ${minutes}m más`
+  return `Sesión activa ${minutes}m más`
+})
 
 interface NavItem {
   icon: string
@@ -39,10 +64,6 @@ const unreadTotal = computed(() =>
 
 function isActive(to: string): boolean {
   return route.path === to || route.path.startsWith(`${to}/`)
-}
-
-function close() {
-  emit('update:modelValue', false)
 }
 </script>
 
@@ -138,11 +159,39 @@ function close() {
         <div class="my-2 border-t border-slate-200 dark:border-slate-800" />
 
         <div class="flex items-center gap-3 rounded-lg px-2 py-1.5">
-          <Avatar name="Operador" size="sm" />
-          <span class="text-sm font-medium text-slate-700 dark:text-slate-200">Operador</span>
-          <IconButton icon="logout" size="sm" class="ml-auto" />
+          <Avatar :name="auth.user?.name || 'Operador'" size="sm" />
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-medium text-slate-700 dark:text-slate-200">
+              {{ auth.user?.name || 'Operador' }}
+            </p>
+            <p
+              v-if="sessionRemainingLabel"
+              class="truncate text-[10px] text-slate-400 dark:text-slate-500"
+              :title="auth.sessionExpiresAt ? `Vence: ${new Date(auth.sessionExpiresAt).toLocaleString('es')}` : ''"
+            >
+              {{ sessionRemainingLabel }}
+            </p>
+          </div>
+          <IconButton
+            icon="logout"
+            size="sm"
+            title="Cerrar sesión"
+            aria-label="Cerrar sesión"
+            @click="showLogoutConfirm = true"
+          />
         </div>
       </div>
+
+      <ConfirmDialog
+        :show="showLogoutConfirm"
+        title="Cerrar sesión"
+        message="¿Seguro que querés salir de tu cuenta?"
+        confirm-text="Salir"
+        cancel-text="Quedarme"
+        variant="danger"
+        @confirm="handleLogout"
+        @cancel="showLogoutConfirm = false"
+      />
     </aside>
   </div>
 </template>

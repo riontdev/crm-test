@@ -87,14 +87,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 export const api = {
   // Auth
   login(email: string, password: string) {
-    return request<{ user: User }>('/auth/login', {
+    return request<{ user: User; session_expires_at?: string }>('/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     })
   },
 
   me() {
-    return request<{ user: User }>('/auth/me')
+    return request<{ user: User; session_expires_at?: string }>('/auth/me')
   },
 
   logoutApi() {

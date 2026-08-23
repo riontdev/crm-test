@@ -11,6 +11,9 @@ import (
 
 const cookieName = "crm_session"
 
+// SessionDuration es la vigencia máxima de la sesión (JWT y cookie): 1 día.
+const SessionDuration = 24 * time.Hour
+
 var ErrSecretNotConfigured = errors.New("AUTH_JWT_SECRET no configurada")
 
 type User struct {
@@ -47,7 +50,7 @@ func GenerateToken(user User) (string, error) {
 		Role:   user.Role,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(SessionDuration)),
 		},
 	}
 

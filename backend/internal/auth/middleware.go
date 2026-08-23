@@ -23,6 +23,7 @@ func RequireAuth() echo.MiddlewareFunc {
 			c.Set("user_id", claims.UserID)
 			c.Set("role", claims.Role)
 			c.Set("email", claims.Email)
+			c.Set("claims", claims)
 			return next(c)
 		}
 	}
