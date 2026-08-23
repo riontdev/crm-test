@@ -134,6 +134,10 @@ func main() {
 	// SSE endpoint for real-time updates
 	e.GET("/api/events", sseHub.ServeHTTP)
 
+	// File upload endpoint
+	uploadHandler := handlers.NewUploadHandler()
+	e.POST("/api/upload", uploadHandler.Upload)
+
 	// Media proxy: fetches Zernio media URLs and serves them to the frontend
 	e.GET("/api/media", func(c echo.Context) error {
 		mediaURL := c.QueryParam("url")

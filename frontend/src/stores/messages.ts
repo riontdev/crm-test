@@ -51,11 +51,16 @@ export const useMessagesStore = defineStore('messages', () => {
     }
   }
 
-  async function sendMessage(conversationId: string, text: string, accountId: string) {
+  async function sendMessage(conversationId: string, text: string, accountId: string, attachmentUrl?: string, attachmentType?: string) {
     sending.value = true
     error.value = null
     try {
-      await api.sendMessage(conversationId, { message: text, account_id: accountId })
+      await api.sendMessage(conversationId, {
+        message: text,
+        account_id: accountId,
+        attachment_url: attachmentUrl,
+        attachment_type: attachmentType,
+      })
       await fetchConversation(conversationId)
     } catch (e: any) {
       error.value = e.message
