@@ -11,6 +11,10 @@
     {
       "source": "/webhook/:path*",
       "destination": "https://crm-test-production-6d2d.up.railway.app/webhook/:path*"
+    },
+    {
+      "source": "/((?!assets/).*)",
+      "destination": "/index.html"
     }
   ]
 }

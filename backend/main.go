@@ -126,6 +126,43 @@ func main() {
 		return webhookHandler.HandleWebhook(c)
 	})
 
+	// Media proxy: fetches Zernio media URLs and serves them to the frontend
+	// This bypasses CORS and auth requirements on Zernio media endpoints
+	e.GET("/api/media", func(c echo.Context) error {
+		mediaURL := c.QueryParam("url")
+		if mediaURL == "" {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing url param"})
+		}
+		if cfg.ZernioAPIKey == "" {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "ZERNIO_API_KEY not configured"})
+		}
+
+		req, err := http.NewRequest("GET", mediaURL, nil)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid url"})
+		}
+		req.Header.Set("Authorization", "Bearer "+cfg.ZernioAPIKey)
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return c.JSON(http.StatusBadGateway, map[string]string{"error": "failed to fetch media"})
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			return c.JSON(http.StatusBadGateway, map[string]string{"error": "upstream returned non-200"})
+		}
+
+		contentType := resp.Header.Get("Content-Type")
+		if contentType == "" {
+			contentType = "application/octet-stream"
+		}
+
+		c.Response().Header().Set("Content-Type", contentType)
+		c.Response().Header().Set("Cache-Control", "public, max-age=86400")
+		return c.Stream(http.StatusOK, contentType, resp.Body)
+	})
+
 	// Inbox API (for frontend)
 	if inboxHandler != nil && sendHandler != nil {
 		api := e.Group("/api")

@@ -103,10 +103,10 @@ function openAttachment(url?: string) {
               <template v-for="(att, i) in msg.attachments" :key="i">
                 <img
                   v-if="att.type === 'image' || att.url?.match(/\.(jpg|jpeg|png|gif|webp)/i)"
-                  :src="att.url"
+                  :src="`/api/media?url=${encodeURIComponent(att.url)}`"
                   alt="attachment"
                   class="rounded-lg max-w-full cursor-pointer hover:opacity-90 transition-opacity"
-                  @click="openAttachment(att.url)"
+                  @click="openAttachment(`/api/media?url=${encodeURIComponent(att.url)}`)"
                 />
                 <a
                   v-else
