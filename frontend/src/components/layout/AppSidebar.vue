@@ -55,8 +55,8 @@ function close() {
     />
 
     <aside
-      class="fixed inset-y-0 left-0 z-40 flex w-[260px] shrink-0 transform flex-col border-r border-slate-200 bg-white transition-transform duration-200 ease-in-out dark:border-slate-800 dark:bg-[#101828]"
-      :class="modelValue ? 'translate-x-0' : '-translate-x-full md:translate-x-0'"
+      class="fixed inset-y-0 left-0 z-40 flex h-full w-[260px] shrink-0 transform flex-col border-r border-slate-200 bg-white transition-transform duration-200 ease-in-out md:static md:z-auto md:translate-x-0 dark:border-slate-800 dark:bg-[#101828]"
+      :class="modelValue ? 'translate-x-0' : '-translate-x-full'"
     >
       <!-- Marca -->
       <div
