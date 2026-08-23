@@ -32,6 +32,7 @@ export interface Message {
   external_id: string
   direction: string
   text?: string
+  attachments?: Array<{ type: string; url: string }>
   sender_type: string
   status: string
   platform_message_id?: string

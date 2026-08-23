@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 
@@ -166,15 +167,16 @@ func (h *InboxHandler) GetConversation(c echo.Context) error {
 	}
 
 	type MsgResponse struct {
-		ID                uuid.UUID `json:"id"`
-		ExternalID        string    `json:"external_id"`
-		Direction         string    `json:"direction"`
-		Text              *string   `json:"text,omitempty"`
-		SenderType        string    `json:"sender_type"`
-		Status            string    `json:"status"`
-		PlatformMessageID *string   `json:"platform_message_id,omitempty"`
-		SentAt            *string   `json:"sent_at,omitempty"`
-		CreatedAt         string    `json:"created_at"`
+		ID                uuid.UUID       `json:"id"`
+		ExternalID        string          `json:"external_id"`
+		Direction         string          `json:"direction"`
+		Text              *string         `json:"text,omitempty"`
+		Attachments       json.RawMessage `json:"attachments"`
+		SenderType        string          `json:"sender_type"`
+		Status            string          `json:"status"`
+		PlatformMessageID *string         `json:"platform_message_id,omitempty"`
+		SentAt            *string         `json:"sent_at,omitempty"`
+		CreatedAt         string          `json:"created_at"`
 	}
 
 	type ConversationDetail struct {
@@ -221,12 +223,13 @@ func (h *InboxHandler) GetConversation(c echo.Context) error {
 
 	for _, msg := range msgs {
 		mr := MsgResponse{
-			ID:         msg.ID,
-			ExternalID: msg.ExternalID,
-			Direction:  msg.Direction,
-			Text:       msg.Text,
-			SenderType: msg.SenderType,
-			Status:     msg.Status,
+			ID:          msg.ID,
+			ExternalID:  msg.ExternalID,
+			Direction:   msg.Direction,
+			Text:        msg.Text,
+			Attachments: msg.Attachments,
+			SenderType:  msg.SenderType,
+			Status:      msg.Status,
 		}
 		if msg.PlatformMessageID != nil {
 			mr.PlatformMessageID = msg.PlatformMessageID

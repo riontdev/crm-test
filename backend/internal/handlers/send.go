@@ -35,9 +35,11 @@ func NewSendHandler(
 
 // SendMessageRequest is the body for POST /api/inbox/conversations/:id/messages
 type SendMessageRequest struct {
-	Message       string `json:"message"`
-	AccountID     string `json:"account_id"`
-	ReplyTo       string `json:"reply_to,omitempty"`
+	AccountID      string  `json:"account_id"`
+	Message        string  `json:"message"`
+	AttachmentURL  *string `json:"attachment_url,omitempty"`
+	AttachmentType *string `json:"attachment_type,omitempty"`
+	ReplyTo        string  `json:"reply_to,omitempty"`
 }
 
 // SendMessage sends a reply to a conversation.
@@ -70,8 +72,10 @@ func (h *SendHandler) SendMessage(c echo.Context) error {
 	// Send via Zernio API
 	text := req.Message
 	zernioReq := zernio.SendMessageRequest{
-		AccountID: req.AccountID,
-		Message:   &text,
+		AccountID:      req.AccountID,
+		Message:        &text,
+		AttachmentURL:  req.AttachmentURL,
+		AttachmentType: req.AttachmentType,
 	}
 	if req.ReplyTo != "" {
 		zernioReq.ReplyTo = &req.ReplyTo

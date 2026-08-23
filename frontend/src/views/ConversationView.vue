@@ -46,6 +46,10 @@ const channelEmojis: Record<string, string> = {
   instagram: '📸',
   facebook: '👤',
 }
+
+function openAttachment(url?: string) {
+  if (url) window.open(url, '_blank')
+}
 </script>
 
 <template>
@@ -94,14 +98,34 @@ const channelEmojis: Record<string, string> = {
                 : 'bg-neutral-100 text-black rounded-bl-md'
             ]"
           >
-            <p class="whitespace-pre-wrap break-words">{{ msg.text }}</p>
+            <p v-if="msg.text" class="whitespace-pre-wrap break-words">{{ msg.text }}</p>
+            <div v-if="msg.attachments && msg.attachments.length > 0" class="mt-1 space-y-1">
+              <template v-for="(att, i) in msg.attachments" :key="i">
+                <img
+                  v-if="att.type === 'image' || att.url?.match(/\.(jpg|jpeg|png|gif|webp)/i)"
+                  :src="att.url"
+                  alt="attachment"
+                  class="rounded-lg max-w-full cursor-pointer hover:opacity-90 transition-opacity"
+                  @click="openAttachment(att.url)"
+                />
+                <a
+                  v-else
+                  :href="att.url"
+                  target="_blank"
+                  class="text-xs underline opacity-70 hover:opacity-100 block"
+                >
+                  Archivo adjunto
+                </a>
+              </template>
+            </div>
             <div
+              v-if="msg.sent_at"
               :class="[
                 'text-[10px] mt-1',
                 msg.direction === 'outgoing' ? 'text-neutral-400' : 'text-neutral-500'
               ]"
             >
-              {{ msg.sent_at ? new Date(msg.sent_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' }) : '' }}
+              {{ new Date(msg.sent_at).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' }) }}
             </div>
           </div>
         </div>
