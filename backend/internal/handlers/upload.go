@@ -1,10 +1,8 @@
 package handlers
 
 import (
-	"bytes"
 	"fmt"
 	"io"
-	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -80,28 +78,17 @@ func (h *UploadHandler) Upload(c echo.Context) error {
 	if ext == "" {
 		ext = "." + strings.Split(contentType, "/")[1]
 	}
- filename := fmt.Sprintf("%s/%s%s", time.Now().Format("2006-01"), uuid.New().String(), ext)
+	filename := fmt.Sprintf("%s/%s%s", time.Now().Format("2006-01"), uuid.New().String(), ext)
 
-	// Upload to Supabase Storage
-	var body bytes.Buffer
-	writer := multipart.NewWriter(&body)
-
-	part, err := writer.CreateFormFile("file", filename)
-	if err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create form file"})
-	}
-	if _, err := part.Write(fileBytes); err != nil {
-		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to write file"})
-	}
-	writer.Close()
-
+	// Upload to Supabase Storage using raw body (not multipart)
 	uploadURL := fmt.Sprintf("%s/storage/v1/object/%s/%s", h.supabaseURL, h.storageBucket, filename)
-	req, err := http.NewRequest("POST", uploadURL, &body)
+	req, err := http.NewRequest("POST", uploadURL, strings.NewReader(string(fileBytes)))
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to create request"})
 	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
+	req.Header.Set("Content-Type", contentType)
 	req.Header.Set("Authorization", "Bearer "+h.supabaseKey)
+	req.Header.Set("x-upsert", "true")
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -112,7 +99,7 @@ func (h *UploadHandler) Upload(c echo.Context) error {
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		return c.JSON(http.StatusBadGateway, map[string]string{
-			"error": fmt.Sprintf("storage upload failed: %s", string(respBody)),
+			"error": fmt.Sprintf("storage upload failed (status %d): %s", resp.StatusCode, string(respBody)),
 		})
 	}
 
