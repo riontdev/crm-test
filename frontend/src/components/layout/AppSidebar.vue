@@ -27,6 +27,7 @@ const navItems: NavItem[] = [
   { icon: 'dashboard', label: 'Dashboard' },
   { icon: 'inbox', label: 'Inbox', to: '/inbox' },
   { icon: 'smart_toy', label: 'Agentes IA', to: '/agents' },
+  { icon: 'group', label: 'Usuarios', to: '/users' },
   { icon: 'hub', label: 'Canales' },
   { icon: 'description', label: 'Plantillas' },
   { icon: 'bar_chart', label: 'Reportes' },

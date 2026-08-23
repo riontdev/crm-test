@@ -14,6 +14,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/riont/crm/backend/internal/agent"
+	"github.com/riont/crm/backend/internal/auth"
 	"github.com/riont/crm/backend/internal/config"
 	"github.com/riont/crm/backend/internal/database"
 	"github.com/riont/crm/backend/internal/handlers"
@@ -131,15 +132,32 @@ func main() {
 		return webhookHandler.HandleWebhook(c)
 	})
 
-	// SSE endpoint for real-time updates
-	e.GET("/api/events", sseHub.ServeHTTP)
-
-	// File upload endpoint
+	// SSE endpoint for real-time updates (moved to protected group below)
+	// File upload handler
 	uploadHandler := handlers.NewUploadHandler()
-	e.POST("/api/upload", uploadHandler.Upload)
+
+	// Auth service + handler (works with nil pool: handlers respond 503)
+	userService := auth.NewUserService(pool)
+	authHandler := handlers.NewAuthHandler(userService)
+
+	if os.Getenv("AUTH_JWT_SECRET") == "" {
+		log.Printf("WARN: AUTH_JWT_SECRET no configurada — el login estará deshabilitado")
+	}
+
+	// Public auth endpoints
+	e.POST("/api/auth/login", authHandler.Login)
+	e.POST("/api/auth/logout", authHandler.Logout)
+
+	// Protected API group: everything else under /api requires a session
+	protected := e.Group("/api", auth.RequireAuth())
+
+	protected.GET("/auth/me", authHandler.Me)
+
+	protected.GET("/events", sseHub.ServeHTTP)
+	protected.POST("/upload", uploadHandler.Upload)
 
 	// Media proxy: fetches Zernio media URLs and serves them to the frontend
-	e.GET("/api/media", func(c echo.Context) error {
+	protected.GET("/media", func(c echo.Context) error {
 		mediaURL := c.QueryParam("url")
 		if mediaURL == "" {
 			return c.JSON(http.StatusBadRequest, map[string]string{"error": "missing url param"})
@@ -176,26 +194,27 @@ func main() {
 
 	// Inbox API (for frontend)
 	if inboxHandler != nil && sendHandler != nil {
-		api := e.Group("/api")
-		inbox := api.Group("/inbox")
+		inbox := protected.Group("/inbox")
 		inbox.GET("/conversations", inboxHandler.ListConversations)
 		inbox.GET("/conversations/:id", inboxHandler.GetConversation)
 		inbox.PATCH("/conversations/:id", inboxHandler.UpdateConversation)
 		inbox.POST("/conversations/:id/messages", sendHandler.SendMessage)
+		inbox.PATCH("/contacts/:id", inboxHandler.UpdateContactNotes)
 	}
 
 	// Agent config API
-	api := e.Group("/api")
-	api.GET("/agents", func(c echo.Context) error {
-		if pool == nil {
-			return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database not connected"})
-		}
-		configs, err := agent.NewConfigRepository(pool).GetAll(c.Request().Context())
-		if err != nil {
-			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list agent configs"})
-		}
-		return c.JSON(http.StatusOK, map[string]interface{}{"data": configs})
-	})
+	if pool != nil {
+		agentsHandler := handlers.NewAgentsHandler(pool)
+		protected.GET("/agents", agentsHandler.ListAgents)
+		protected.PATCH("/agents/:channel", agentsHandler.UpdateAgent)
+	}
+
+	// Users management API (admin only)
+	users := protected.Group("/users", auth.RequireRole("admin"))
+	users.GET("", authHandler.ListUsers)
+	users.POST("", authHandler.CreateUser)
+	users.PUT("/:id", authHandler.UpdateUser)
+	users.DELETE("/:id", authHandler.DeleteUser)
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)

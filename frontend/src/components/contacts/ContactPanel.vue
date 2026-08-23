@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { api, type ConversationDetail } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
+import { useUiStore } from '@/stores/ui'
 import Avatar from '@/components/ui/Avatar.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
@@ -16,9 +17,46 @@ const props = defineProps<Props>()
 
 const emit = defineEmits<{ close: []; archived: [] }>()
 
+const ui = useUiStore()
+
 const showArchiveConfirm = ref(false)
 const archiving = ref(false)
 const archiveError = ref<string | null>(null)
+
+const notesDraft = ref('')
+const notesDirty = ref(false)
+const savingNotes = ref(false)
+
+watch(
+  () => props.conversation?.contact?.id,
+  () => {
+    notesDraft.value = props.conversation?.contact?.notes ?? ''
+    notesDirty.value = false
+  },
+  { immediate: true },
+)
+
+function onNotesInput() {
+  notesDirty.value = true
+}
+
+async function saveNotes() {
+  const contactId = props.conversation?.contact?.id
+  if (!contactId || !notesDirty.value) return
+  savingNotes.value = true
+  try {
+    await api.updateContactNotes(contactId, notesDraft.value)
+    if (props.conversation?.contact) {
+      props.conversation.contact.notes = notesDraft.value
+    }
+    notesDirty.value = false
+    ui.success('Notas guardadas')
+  } catch (e: any) {
+    ui.error(e.message || 'No se pudieron guardar las notas')
+  } finally {
+    savingNotes.value = false
+  }
+}
 
 watch(
   () => props.conversation?.id,
@@ -139,6 +177,36 @@ async function handleArchive() {
             </dd>
           </div>
         </dl>
+      </section>
+
+      <!-- Notas -->
+      <section>
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <h4 class="text-[11px] font-semibold tracking-wider text-slate-400 uppercase dark:text-slate-500">
+            Notas
+          </h4>
+          <button
+            v-if="notesDirty"
+            type="button"
+            class="flex items-center gap-1 text-xs font-medium text-sky-600 transition-colors hover:text-sky-700 dark:text-sky-400"
+            :disabled="savingNotes"
+            @click="saveNotes"
+          >
+            <span
+              v-if="savingNotes"
+              class="h-3 w-3 animate-spin rounded-full border-2 border-current/30 border-t-current"
+              aria-hidden="true"
+            />
+            Guardar
+          </button>
+        </div>
+        <textarea
+          v-model="notesDraft"
+          rows="4"
+          placeholder="Agregar notas sobre este contacto..."
+          class="w-full resize-none rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-400 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-200 dark:placeholder:text-slate-500"
+          @input="onNotesInput"
+        ></textarea>
       </section>
 
       <!-- Acciones -->

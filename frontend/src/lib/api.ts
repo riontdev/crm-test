@@ -1,5 +1,12 @@
 const API_BASE = '/api'
 
+export interface User {
+  id: string
+  email: string
+  name: string
+  role: string
+}
+
 export interface Contact {
   id: string
   name?: string
@@ -8,6 +15,7 @@ export interface Contact {
   avatar_url?: string
   company?: string
   tags?: string[]
+  notes?: string
 }
 
 export interface Conversation {
@@ -67,6 +75,9 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ error: res.statusText }))
+    if (res.status === 401 && !path.startsWith('/auth/login')) {
+      window.dispatchEvent(new CustomEvent('crm:unauthorized'))
+    }
     throw new Error(error.error || 'Request failed')
   }
 
@@ -74,6 +85,22 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // Auth
+  login(email: string, password: string) {
+    return request<{ user: User }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    })
+  },
+
+  me() {
+    return request<{ user: User }>('/auth/me')
+  },
+
+  logoutApi() {
+    return request<{ ok: boolean }>('/auth/logout', { method: 'POST' })
+  },
+
   // Conversations
   listConversations(params?: { channel?: string; status?: string }) {
     const query = new URLSearchParams()
@@ -110,8 +137,22 @@ export const api = {
     }).then(res => res.json())
   },
 
+  updateContactNotes(id: string, notes: string) {
+    return request<{ id: string; notes: string }>(`/inbox/contacts/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ notes }),
+    })
+  },
+
   // Agents
   listAgents() {
     return request<{ data: AgentConfig[] }>('/agents')
+  },
+
+  updateAgent(channel: string, data: Partial<Pick<AgentConfig, 'enabled' | 'model' | 'system_prompt' | 'temperature' | 'max_tokens'>>) {
+    return request<AgentConfig>(`/agents/${channel}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
   },
 }

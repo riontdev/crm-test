@@ -275,6 +275,10 @@ func (h *InboxHandler) UpdateConversation(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "status must be 'active' or 'archived'"})
 	}
 
+	if _, err := h.conversations.GetByID(c.Request().Context(), id); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "conversación no encontrada"})
+	}
+
 	if err := h.conversations.UpdateStatus(c.Request().Context(), id, req.Status); err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update conversation"})
 	}
@@ -282,5 +286,41 @@ func (h *InboxHandler) UpdateConversation(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"id":     id,
 		"status": req.Status,
+	})
+}
+
+// UpdateContactNotes actualiza las notas de un contacto.
+// PATCH /api/inbox/contacts/:id
+func (h *InboxHandler) UpdateContactNotes(c echo.Context) error {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "id de contacto inválido"})
+	}
+
+	var req struct {
+		Notes string `json:"notes"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "cuerpo de la petición inválido"})
+	}
+
+	if _, err := h.contacts.GetByID(c.Request().Context(), id); err != nil {
+		return c.JSON(http.StatusNotFound, map[string]string{"error": "contacto no encontrado"})
+	}
+
+	// Empty string allowed = clear notes (store NULL)
+	var notes *string
+	if req.Notes != "" {
+		notes = &req.Notes
+	}
+
+	if err := h.contacts.UpdateNotes(c.Request().Context(), id, notes); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "error al actualizar el contacto"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"id":    id,
+		"notes": req.Notes,
 	})
 }

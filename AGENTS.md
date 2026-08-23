@@ -166,17 +166,30 @@ webhook event
 
 ### Backend (Railway)
 
+**Públicos:** `/health`, `POST /api/auth/login`, `POST /api/auth/logout`, `POST /webhook/zernio`.
+**Todo el resto de `/api/*` exige sesión (cookie JWT httpOnly).** Los marcados 🔒 admin exigen rol admin.
+
 | Método | Ruta | Descripción |
 |---|---|---|
 | GET | `/health` | Health check (verifica DB) |
 | POST | `/webhook/zernio` | Webhook entrante de Zernio |
+| POST | `/api/auth/login` | Login (setea cookie sesión 7 días) |
+| POST | `/api/auth/logout` | Logout (expira cookie) |
+| GET | `/api/auth/me` | Usuario autenticado actual |
 | GET | `/api/events` | SSE: actualizaciones en tiempo real |
-| GET | `/api/inbox/conversations` | Listar conversaciones (filtro: ?channel=&status=) |
-| GET | `/api/inbox/conversations/:id` | Detalle de conversación + mensajes |
+| GET | `/api/inbox/conversations` | Listar conversaciones (?channel=&status=) |
+| GET | `/api/inbox/conversations/:id` | Detalle + mensajes (resetea unread) |
+| PATCH | `/api/inbox/conversations/:id` | Archivar/desarchivar {status} (404 si no existe) |
 | POST | `/api/inbox/conversations/:id/messages` | Enviar mensaje (+ adjunto opcional) |
+| PATCH | `/api/inbox/contacts/:id` | Guardar notas del contacto {notes} |
 | POST | `/api/upload` | Subir archivo a Supabase Storage |
 | GET | `/api/media?url=...` | Proxy de medios (bypass CORS/auth de Zernio) |
-| GET | `/api/agents` | Configuración de agentes IA |
+| GET | `/api/agents` | Configuración de agentes IA (JSON lowercase) |
+| PATCH | `/api/agents/:channel` | Editar agente {enabled,model,system_prompt,temperature,max_tokens} |
+| GET 🔒 | `/api/users` | Listar usuarios |
+| POST 🔒 | `/api/users` | Crear usuario {email,name,password,role} |
+| PUT 🔒 | `/api/users/:id` | Editar {name?,role?,password?} |
+| DELETE 🔒 | `/api/users/:id` | Eliminar (protege último admin y auto-borrado) |
 
 ### Env vars (Railway)
 
@@ -187,7 +200,8 @@ webhook event
 | `ZERNIO_WEBHOOK_SECRET` | (opcional) HMAC secret |
 | `SUPABASE_URL` | URL del proyecto Supabase |
 | `SUPABASE_SERVICE_KEY` | Service role key de Supabase |
-| `OPENROUTER_API_KEY` | (pendiente) Para agente IA |
+| `AUTH_JWT_SECRET` | Secreto HS256 para cookies de sesión (**requerido para login**) |
+| `OPENROUTER_API_KEY` | **Pendiente** — sin ella los agentes no responden (log claro, sin crash) |
 | `PORT` | Puerto del servidor (default: 8080) |
 
 ## Fases de desarrollo
@@ -196,43 +210,31 @@ webhook event
 2. **Fase 2** — Cliente de la API de Zernio, tipado contra el OpenAPI ✅
 3. **Fase 3** — Webhook entrante y persistencia ✅
 4. **Fase 4** — Bandeja: listar, abrir y responder ✅
-5. **Fase 5** — Agente por canal (pendiente OpenRouter key)
+5. **Fase 5** — Agente por canal ✅
 6. **Fase 6** — Deploy y conexión de cuentas ✅
 7. **Fase 7** — Tiempo real (SSE) ✅
 8. **Fase 8** — Archivos adjuntos (upload + display + send) ✅
-9. **Fase 9** — UI/UX redesign ← PRÓXIMO
-10. **Fase 10** — Agente IA (OpenRouter integration)
-11. **Fase 11** — Conectar más cuentas (Instagram, Facebook)
+9. **Fase 9** — UI/UX redesign "SocialCRM" ✅ (design system Kinetic en docs/design-spec.md)
+10. **Fase 10** — Agente IA: **construido y apagado** — falta solo cargar `OPENROUTER_API_KEY` y activar por canal
+11. **Fase 11** — Conectar más cuentas (Instagram, Facebook) — PENDIENTE
+12. **Fase 12** — Auth + Usuarios ✅ (login cookie JWT, CRUD usuarios admin-only, usuario default riontdev@gmail.com)
 
-## Pendiente: UI/UX Redesign
+## Pendiente
 
-El frontend actual es funcional pero minimalista. Para un CRM profesional se necesita:
+- Cargar `OPENROUTER_API_KEY` en Railway → activar agentes desde UI (AgentsView editable ya operativa)
+- Fase 11: conectar cuentas Instagram/Facebook en Zernio
+- Grabar mensajes de audio (botón mic + MediaRecorder) — postergado
+- Páginas del diseño Stitch no implementadas: Dashboard KPIs, Canales, Plantillas, Reportes, Configuración
 
-### Problemas actuales
-- Diseño muy simple, falta pulido visual
-- Sin sidebar de navegación (solo links en top bar)
-- Sin indicador de canal en la lista de conversaciones (colores débiles)
-- Sin搜索 de conversaciones
-- Sin资料显示 panel (info del contacto al lado derecho)
-- Sin typing indicators reales
-- Sin emoji picker
-- Sin soporte de audio/video inline
-- Sin dark mode
-- Sin responsive mobile
-- Sin estados vacíos descriptivos
-- Sin animaciones de transición
+### users
+- id: uuid PK
+- email: text NOT NULL UNIQUE
+- name: text NOT NULL
+- password_hash: text NOT NULL (bcrypt)
+- role: text default 'agente' (admin | agente)
+- created_at / updated_at: timestamptz
 
-### Próximos pasos
-1. Instalar shadcn/ui components reales (Dialog, Dropdown, Tooltip, etc.)
-2. Sidebar con navegación + filtros por canal
-3. Panel de detalles del contacto (derecha)
-4. Búsqueda de conversaciones
-5. Emoji picker
-6. Audio messages (grabar + enviar)
-7. Responsive mobile
-8. Animaciones y transiciones
-9. Dark mode
-10. Estados vacíos y loading states
+Seed default: riontdev@gmail.com / 123456 (rol admin, hash via pgcrypto).
 
 ## Cómo trabajar
 Por fases. Al terminar cada una, `go build ./...` y `vue-tsc --noEmit` + `npm run build` deben pasar limpios antes de seguir. No avanzar si la fase anterior no compila.

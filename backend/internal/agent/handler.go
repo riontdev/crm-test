@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -44,11 +45,18 @@ func NewWebhookHandler(
 // It invokes the AI agent if enabled for the channel, and sends the reply.
 // This runs asynchronously — the webhook already returned 200.
 func (h *WebhookHandler) AfterMessageReceived(ctx context.Context, conversationID, channel, contactName, messageText string) {
-	// 1. Get conversation history
-	history, err := h.agent.GetHistory(ctx, conversationID, 20)
+	// 1. Get conversation history. The incoming message was just persisted,
+	// so drop its duplicate from history before passing it as the current turn.
+	history, err := h.agent.GetHistory(ctx, conversationID, 21)
 	if err != nil {
 		fmt.Printf("agent: failed to get history: %v\n", err)
 		return
+	}
+	if n := len(history); n > 0 {
+		last := history[n-1]
+		if last.Role == "user" && last.Content == messageText {
+			history = history[:n-1]
+		}
 	}
 
 	// 2. Call the agent
@@ -61,7 +69,11 @@ func (h *WebhookHandler) AfterMessageReceived(ctx context.Context, conversationI
 	})
 
 	if err != nil {
-		fmt.Printf("agent: failed to process message: %v\n", err)
+		if strings.Contains(err.Error(), "OPENROUTER_API_KEY") {
+			fmt.Printf("agente IA sin configurar: falta OPENROUTER_API_KEY\n")
+		} else {
+			fmt.Printf("agente: error procesando mensaje: %v\n", err)
+		}
 		return
 	}
 
@@ -82,8 +94,14 @@ func (h *WebhookHandler) AfterMessageReceived(ctx context.Context, conversationI
 	}
 
 	text := resp.Reply
+	accountID := ""
+	if conv.ZernioAccountID != nil {
+		accountID = *conv.ZernioAccountID
+	} else {
+		fmt.Printf("agente: conversación sin zernio_account_id\n")
+	}
 	_, err = h.zernioClient.SendMessage(conversationID, zernio.SendMessageRequest{
-		AccountID: "",
+		AccountID: accountID,
 		Message:   &text,
 	})
 	if err != nil {

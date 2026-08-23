@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { RouterView } from 'vue-router'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
 import TopBar from '@/components/layout/TopBar.vue'
+import ToastHost from '@/components/ui/ToastHost.vue'
 import { initDarkMode } from '@/composables/useDarkMode'
 
 initDarkMode()
@@ -18,5 +19,6 @@ const sidebarOpen = ref(false)
         <RouterView />
       </main>
     </div>
+    <ToastHost />
   </div>
 </template>
