@@ -27,53 +27,70 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Run migrations
+	// Run migrations (non-fatal: server starts even if DB is down)
 	if err := database.Migrate(cfg.DatabaseURL); err != nil {
-		log.Fatalf("Migration failed: %v", err)
+		log.Printf("WARNING: Migration failed: %v (server will start anyway)", err)
+	} else {
+		log.Println("Migrations applied successfully")
 	}
 
 	// Create connection pool
 	pool, err := database.NewPool(ctx)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		log.Printf("WARNING: Failed to connect to database: %v (server will start anyway)", err)
 	}
-	defer pool.Close()
 
 	// Initialize repositories
-	webhookEvents := repository.NewWebhookEventRepository(pool)
-	contacts := repository.NewContactRepository(pool)
-	identities := repository.NewContactIdentityRepository(pool)
-	conversations := repository.NewConversationRepository(pool)
-	messages := repository.NewMessageRepository(pool)
+	var webhookEvents *repository.WebhookEventRepository
+	var contacts *repository.ContactRepository
+	var identities *repository.ContactIdentityRepository
+	var conversations *repository.ConversationRepository
+	var messages *repository.MessageRepository
+
+	if pool != nil {
+		defer pool.Close()
+		webhookEvents = repository.NewWebhookEventRepository(pool)
+		contacts = repository.NewContactRepository(pool)
+		identities = repository.NewContactIdentityRepository(pool)
+		conversations = repository.NewConversationRepository(pool)
+		messages = repository.NewMessageRepository(pool)
+	}
 
 	// Initialize Zernio client
 	zernioClient := zernio.NewClient(cfg.ZernioAPIKey)
 
-	// Initialize agent system
-	agentConfigRepo := agent.NewConfigRepository(pool)
-	openRouterClient := agent.NewOpenRouterClient()
-	aiAgent := agent.NewAgent(agentConfigRepo, openRouterClient, pool)
-	agentWH := agent.NewWebhookHandler(aiAgent, messages, conversations, contacts, zernioClient, pool)
+	// Initialize agent system (needs pool)
+	var agentWH *agent.WebhookHandler
+	var webhookHandler *handlers.WebhookHandler
+	var inboxHandler *handlers.InboxHandler
+	var sendHandler *handlers.SendHandler
 
-	// Initialize inbox handler
-	inboxHandler := handlers.NewInboxHandler(conversations, messages, contacts)
+	if pool != nil {
+		agentConfigRepo := agent.NewConfigRepository(pool)
+		openRouterClient := agent.NewOpenRouterClient()
+		aiAgent := agent.NewAgent(agentConfigRepo, openRouterClient, pool)
+		agentWH = agent.NewWebhookHandler(aiAgent, messages, conversations, contacts, zernioClient, pool)
 
-	// Initialize send handler
-	sendHandler := handlers.NewSendHandler(messages, conversations, contacts, zernioClient)
+		// Initialize inbox handler
+		inboxHandler = handlers.NewInboxHandler(conversations, messages, contacts)
 
-	// Initialize webhook handler
-	webhookHandler := handlers.NewWebhookHandler(
-		webhookEvents,
-		contacts,
-		identities,
-		conversations,
-		messages,
-		zernioClient,
-		cfg.ZernioWebhookSecret,
-	)
+		// Initialize send handler
+		sendHandler = handlers.NewSendHandler(messages, conversations, contacts, zernioClient)
 
-	// Wire agent after-message hook
-	webhookHandler.SetAfterMessage(agentWH.AfterMessageReceived)
+		// Initialize webhook handler
+		webhookHandler = handlers.NewWebhookHandler(
+			webhookEvents,
+			contacts,
+			identities,
+			conversations,
+			messages,
+			zernioClient,
+			cfg.ZernioWebhookSecret,
+		)
+
+		// Wire agent after-message hook
+		webhookHandler.SetAfterMessage(agentWH.AfterMessageReceived)
+	}
 
 	// Echo setup
 	e := echo.New()
@@ -84,6 +101,12 @@ func main() {
 
 	// Health check
 	e.GET("/health", func(c echo.Context) error {
+		if pool == nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{
+				"status": "error",
+				"error":  "database not connected",
+			})
+		}
 		if err := pool.Ping(ctx); err != nil {
 			return c.JSON(http.StatusServiceUnavailable, map[string]string{
 				"status": "error",
@@ -95,19 +118,30 @@ func main() {
 		})
 	})
 
-	// Webhook endpoint
-	e.POST("/webhook/zernio", webhookHandler.HandleWebhook)
+	// Webhook endpoint (always registered)
+	e.POST("/webhook/zernio", func(c echo.Context) error {
+		if webhookHandler == nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database not connected"})
+		}
+		return webhookHandler.HandleWebhook(c)
+	})
 
 	// Inbox API (for frontend)
-	api := e.Group("/api")
-	inbox := api.Group("/inbox")
-	inbox.GET("/conversations", inboxHandler.ListConversations)
-	inbox.GET("/conversations/:id", inboxHandler.GetConversation)
-	inbox.POST("/conversations/:id/messages", sendHandler.SendMessage)
+	if inboxHandler != nil && sendHandler != nil {
+		api := e.Group("/api")
+		inbox := api.Group("/inbox")
+		inbox.GET("/conversations", inboxHandler.ListConversations)
+		inbox.GET("/conversations/:id", inboxHandler.GetConversation)
+		inbox.POST("/conversations/:id/messages", sendHandler.SendMessage)
+	}
 
 	// Agent config API
+	api := e.Group("/api")
 	api.GET("/agents", func(c echo.Context) error {
-		configs, err := agentConfigRepo.GetAll(c.Request().Context())
+		if pool == nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "database not connected"})
+		}
+		configs, err := agent.NewConfigRepository(pool).GetAll(c.Request().Context())
 		if err != nil {
 			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to list agent configs"})
 		}
