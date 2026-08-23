@@ -6,10 +6,31 @@ Una bandeja única donde entran y se responden WhatsApp, Instagram DM y Facebook
 ## Stack
 - **Backend:** Golang (framework Echo) — SIN TypeScript en el backend
 - **Frontend:** Vue.js with Pinia state manager + TypeScript + Tailwind 4 + shadcn/ui
-- **Database:** Supabase (Postgres + Auth), migraciones SQL manuales con golang-migrate
+- **Database:** Supabase (Postgres + Auth + Storage), migraciones SQL manuales con golang-migrate
 - **Proveedor de canales:** Zernio — docs.zernio.com
 - **Agente IA:** Un LLM vía OpenRouter
-- **Deploy:** Vercel (frontend), backend por definir
+- **Deploy:** Vercel (frontend), Railway (backend)
+
+## URLs de Producción
+
+| Servicio | URL |
+|---|---|
+| Frontend | `https://crm-test-xi-gilt.vercel.app` |
+| Backend | `https://crm-test-production-6d2d.up.railway.app` |
+| Webhook | `POST https://crm-test-production-6d2d.up.railway.app/webhook/zernio` |
+| Health | `GET /health` |
+| API | `GET /api/inbox/conversations` |
+| SSE | `GET /api/events` |
+| Upload | `POST /api/upload` |
+| Media proxy | `GET /api/media?url=...` |
+
+## Credenciales (NO commitear)
+
+- **Supabase:** proyecto `mnlxthvltwvlujzfdtjo`, region `us-west-2`
+- **Supabase Pooler:** `postgresql://postgres.mnlxthvltwvlujzfdtjo:PASSWORD@aws-0-us-west-2.pooler.supabase.com:6543/postgres?sslmode=require`
+- **Zernio API key:** `sk_248723...` (read-write)
+- **GitHub:** `riontdev/crm-test` (PAT configurada)
+- **Railway:** env vars configuradas (DATABASE_URL, ZERNIO_API_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
 ## Modelo conceptual
 
@@ -120,6 +141,11 @@ Romper cualquiera de estas no produce un error: produce mensajes que se pierden 
 - updated_at: timestamptz
 - UNIQUE (channel)
 
+### Storage bucket
+- Bucket: `attachments` (público)
+- Usado para: imágenes, videos, archivos adjuntos subidos desde el frontend
+- Path: `YYYY-MM/uuid.ext`
+
 Seed: INSERT INTO agent_configs (channel, enabled) VALUES ('whatsapp', false), ('instagram', false), ('facebook', false);
 
 ## Flujo webhook (message.received)
@@ -132,20 +158,84 @@ webhook event
   → si no existe: crear contact → contact_identity → conversation
   → INSERT message
   → actualizar conversation.last_inbound_at = message.sent_at
+  → sseHub.Broadcast() → tiempo real al frontend
   → after(): invocar agente si enabled
 ```
 
+## API Endpoints
+
+### Backend (Railway)
+
+| Método | Ruta | Descripción |
+|---|---|---|
+| GET | `/health` | Health check (verifica DB) |
+| POST | `/webhook/zernio` | Webhook entrante de Zernio |
+| GET | `/api/events` | SSE: actualizaciones en tiempo real |
+| GET | `/api/inbox/conversations` | Listar conversaciones (filtro: ?channel=&status=) |
+| GET | `/api/inbox/conversations/:id` | Detalle de conversación + mensajes |
+| POST | `/api/inbox/conversations/:id/messages` | Enviar mensaje (+ adjunto opcional) |
+| POST | `/api/upload` | Subir archivo a Supabase Storage |
+| GET | `/api/media?url=...` | Proxy de medios (bypass CORS/auth de Zernio) |
+| GET | `/api/agents` | Configuración de agentes IA |
+
+### Env vars (Railway)
+
+| Variable | Descripción |
+|---|---|
+| `DATABASE_URL` | Supavisor pooler (transaction mode, puerto 6543) |
+| `ZERNIO_API_KEY` | API key de Zernio |
+| `ZERNIO_WEBHOOK_SECRET` | (opcional) HMAC secret |
+| `SUPABASE_URL` | URL del proyecto Supabase |
+| `SUPABASE_SERVICE_KEY` | Service role key de Supabase |
+| `OPENROUTER_API_KEY` | (pendiente) Para agente IA |
+| `PORT` | Puerto del servidor (default: 8080) |
+
 ## Fases de desarrollo
 
-1. **Fase 1** — Modelo de datos y migración ← ACTUAL
-2. **Fase 2** — Cliente de la API de Zernio, tipado contra el OpenAPI
-3. **Fase 3** — Webhook entrante y persistencia
-4. **Fase 4** — Bandeja: listar, abrir y responder
-5. **Fase 5** — Agente por canal
-6. **Fase 6** — Deploy, conexión de cuentas y barridos
+1. **Fase 1** — Modelo de datos y migración ✅
+2. **Fase 2** — Cliente de la API de Zernio, tipado contra el OpenAPI ✅
+3. **Fase 3** — Webhook entrante y persistencia ✅
+4. **Fase 4** — Bandeja: listar, abrir y responder ✅
+5. **Fase 5** — Agente por canal (pendiente OpenRouter key)
+6. **Fase 6** — Deploy y conexión de cuentas ✅
+7. **Fase 7** — Tiempo real (SSE) ✅
+8. **Fase 8** — Archivos adjuntos (upload + display + send) ✅
+9. **Fase 9** — UI/UX redesign ← PRÓXIMO
+10. **Fase 10** — Agente IA (OpenRouter integration)
+11. **Fase 11** — Conectar más cuentas (Instagram, Facebook)
+
+## Pendiente: UI/UX Redesign
+
+El frontend actual es funcional pero minimalista. Para un CRM profesional se necesita:
+
+### Problemas actuales
+- Diseño muy simple, falta pulido visual
+- Sin sidebar de navegación (solo links en top bar)
+- Sin indicador de canal en la lista de conversaciones (colores débiles)
+- Sin搜索 de conversaciones
+- Sin资料显示 panel (info del contacto al lado derecho)
+- Sin typing indicators reales
+- Sin emoji picker
+- Sin soporte de audio/video inline
+- Sin dark mode
+- Sin responsive mobile
+- Sin estados vacíos descriptivos
+- Sin animaciones de transición
+
+### Próximos pasos
+1. Instalar shadcn/ui components reales (Dialog, Dropdown, Tooltip, etc.)
+2. Sidebar con navegación + filtros por canal
+3. Panel de detalles del contacto (derecha)
+4. Búsqueda de conversaciones
+5. Emoji picker
+6. Audio messages (grabar + enviar)
+7. Responsive mobile
+8. Animaciones y transiciones
+9. Dark mode
+10. Estados vacíos y loading states
 
 ## Cómo trabajar
-Por fases. Al terminar cada una, go build y go vet deben pasar limpios antes de seguir. No avanzar si la fase anterior no compila.
+Por fases. Al terminar cada una, `go build ./...` y `vue-tsc --noEmit` + `npm run build` deben pasar limpios antes de seguir. No avanzar si la fase anterior no compila.
 
 ## Stack técnico
 
@@ -155,17 +245,24 @@ Por fases. Al terminar cada una, go build y go vet deben pasar limpios antes de 
 - pgx/v5/pgxpool (connection pool)
 - golang-migrate/migrate/v4 (migraciones SQL)
 - go:embed para archivos de migración
+- SSE (Server-Sent Events) para tiempo real
 
 ### Frontend (Vue + TypeScript)
-- Vue 3
+- Vue 3 (Composition API, `<script setup>`)
 - Pinia (state manager)
 - TypeScript
-- Tailwind CSS 4
-- shadcn/ui
+- Tailwind CSS 4 (con @theme)
 - Vite (bundler)
+- SSE via EventSource API
 
 ### Database
 - Supabase Postgres
-- Conexión via Supavisor transaction mode (puerto 6543)
+- Conexión via Supavisor transaction mode (puerto 6543, `DefaultQueryExecModeSimpleProtocol`)
 - sslmode=require
 - Migraciones SQL manuales (no ORM)
+- Supabase Storage para archivos adjuntos
+
+### Deploy
+- Vercel (frontend SPA, rewrite rules para SPA routing + proxy API)
+- Railway (backend Go, Dockerfile multi-stage)
+- Auto-deploy desde GitHub push a `main`
