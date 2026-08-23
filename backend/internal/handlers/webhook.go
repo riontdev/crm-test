@@ -61,8 +61,10 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 	defer c.Request().Body.Close()
 
 	signature := c.Request().Header.Get("X-Zernio-Signature")
-	if err := zernio.VerifyWebhookSignature(h.webhookSecret, rawBody, signature); err != nil {
-		return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+	if h.webhookSecret != "" {
+		if err := zernio.VerifyWebhookSignature(h.webhookSecret, rawBody, signature); err != nil {
+			return c.JSON(http.StatusUnauthorized, map[string]string{"error": err.Error()})
+		}
 	}
 
 	var envelope zernio.WebhookPayload
