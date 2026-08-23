@@ -56,11 +56,11 @@ func (h *SendHandler) SendMessage(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
 	}
 
-	if req.Message == "" {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "message is required"})
-	}
 	if req.AccountID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "account_id is required"})
+	}
+	if req.Message == "" && req.AttachmentURL == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "message or attachment is required"})
 	}
 
 	// Get the conversation to find the Zernio conversation ID
