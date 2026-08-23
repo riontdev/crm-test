@@ -23,6 +23,9 @@ import (
 	"github.com/riont/crm/backend/internal/zernio"
 )
 
+// appVersion identifies the deployed build; bump to force/verify deploys.
+const appVersion = "1.1.0"
+
 func main() {
 	cfg := config.Load()
 
@@ -120,7 +123,8 @@ func main() {
 			})
 		}
 		return c.JSON(http.StatusOK, map[string]string{
-			"status": "ok",
+			"status":  "ok",
+			"version": appVersion,
 		})
 	})
 
