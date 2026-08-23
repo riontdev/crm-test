@@ -17,11 +17,11 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8080',
+        target: 'https://crm-test-production-6d2d.up.railway.app',
         changeOrigin: true,
       },
       '/webhook': {
-        target: 'http://localhost:8080',
+        target: 'https://crm-test-production-6d2d.up.railway.app',
         changeOrigin: true,
       },
     },

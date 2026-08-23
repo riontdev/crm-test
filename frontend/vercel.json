@@ -2,5 +2,15 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "framework": "vite",
-  "installCommand": "npm install"
+  "installCommand": "npm install",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://crm-test-production-6d2d.up.railway.app/api/:path*"
+    },
+    {
+      "source": "/webhook/:path*",
+      "destination": "https://crm-test-production-6d2d.up.railway.app/webhook/:path*"
+    }
+  ]
 }
