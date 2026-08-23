@@ -180,6 +180,7 @@ func main() {
 		inbox := api.Group("/inbox")
 		inbox.GET("/conversations", inboxHandler.ListConversations)
 		inbox.GET("/conversations/:id", inboxHandler.GetConversation)
+		inbox.PATCH("/conversations/:id", inboxHandler.UpdateConversation)
 		inbox.POST("/conversations/:id/messages", sendHandler.SendMessage)
 	}
 

@@ -110,6 +110,15 @@ func (r *ConversationRepository) ResetUnread(ctx context.Context, conversationID
 	return err
 }
 
+// UpdateStatus sets the conversation status (active | archived).
+func (r *ConversationRepository) UpdateStatus(ctx context.Context, conversationID uuid.UUID, status string) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE conversations SET status = $2, updated_at = now() WHERE id = $1`,
+		conversationID, status,
+	)
+	return err
+}
+
 // ListByContact returns all conversations for a contact, ordered by most recent.
 func (r *ConversationRepository) ListByContact(ctx context.Context, contactID uuid.UUID) ([]Conversation, error) {
 	rows, err := r.pool.Query(ctx,

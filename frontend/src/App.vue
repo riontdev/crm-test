@@ -1,33 +1,22 @@
 <script setup lang="ts">
-import { RouterView, RouterLink } from 'vue-router'
+import { ref } from 'vue'
+import { RouterView } from 'vue-router'
+import AppSidebar from '@/components/layout/AppSidebar.vue'
+import TopBar from '@/components/layout/TopBar.vue'
+import { initDarkMode } from '@/composables/useDarkMode'
+
+initDarkMode()
+const sidebarOpen = ref(false)
 </script>
 
 <template>
-  <div class="min-h-screen bg-white">
-    <!-- Top nav -->
-    <nav class="border-b border-neutral-200 px-6 py-3">
-      <div class="flex items-center gap-8">
-        <h1 class="text-lg font-semibold">CRM Multicanal</h1>
-        <div class="flex gap-4 text-sm">
-          <RouterLink
-            to="/inbox"
-            class="text-neutral-500 hover:text-black transition-colors"
-            active-class="text-black font-medium"
-          >
-            Bandeja
-          </RouterLink>
-          <RouterLink
-            to="/agents"
-            class="text-neutral-500 hover:text-black transition-colors"
-            active-class="text-black font-medium"
-          >
-            Agentes
-          </RouterLink>
-        </div>
-      </div>
-    </nav>
-
-    <!-- Main content -->
-    <RouterView />
+  <div class="h-screen flex overflow-hidden">
+    <AppSidebar v-model="sidebarOpen" />
+    <div class="flex-1 flex flex-col min-w-0">
+      <TopBar @toggle-sidebar="sidebarOpen = !sidebarOpen" />
+      <main class="flex-1 min-h-0 overflow-hidden">
+        <RouterView />
+      </main>
+    </div>
   </div>
 </template>

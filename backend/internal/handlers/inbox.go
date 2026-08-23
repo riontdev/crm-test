@@ -164,6 +164,8 @@ func (h *InboxHandler) GetConversation(c echo.Context) error {
 		Phone     *string   `json:"phone,omitempty"`
 		Email     *string   `json:"email,omitempty"`
 		AvatarURL *string   `json:"avatar_url,omitempty"`
+		Company   *string   `json:"company,omitempty"`
+		Tags      []string  `json:"tags,omitempty"`
 	}
 
 	type MsgResponse struct {
@@ -216,6 +218,14 @@ func (h *InboxHandler) GetConversation(c echo.Context) error {
 		resp.Contact.AvatarURL = contact.AvatarURL
 	}
 
+	if contact.Company != nil {
+		resp.Contact.Company = contact.Company
+	}
+
+	if len(contact.Tags) > 0 {
+		resp.Contact.Tags = contact.Tags
+	}
+
 	if conv.LastInboundAt != nil {
 		s := conv.LastInboundAt.Format("2006-01-02T15:04:05Z07:00")
 		resp.LastInboundAt = &s
@@ -243,4 +253,34 @@ func (h *InboxHandler) GetConversation(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, resp)
+}
+
+// UpdateConversation modifies conversation fields (currently: status).
+// PATCH /api/inbox/conversations/:id
+func (h *InboxHandler) UpdateConversation(c echo.Context) error {
+	idStr := c.Param("id")
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid conversation id"})
+	}
+
+	var req struct {
+		Status string `json:"status"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+
+	if req.Status != "active" && req.Status != "archived" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "status must be 'active' or 'archived'"})
+	}
+
+	if err := h.conversations.UpdateStatus(c.Request().Context(), id, req.Status); err != nil {
+		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update conversation"})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"id":     id,
+		"status": req.Status,
+	})
 }

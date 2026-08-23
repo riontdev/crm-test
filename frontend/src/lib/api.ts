@@ -6,6 +6,8 @@ export interface Contact {
   phone?: string
   email?: string
   avatar_url?: string
+  company?: string
+  tags?: string[]
 }
 
 export interface Conversation {
@@ -83,6 +85,13 @@ export const api = {
 
   getConversation(id: string) {
     return request<ConversationDetail>(`/inbox/conversations/${id}`)
+  },
+
+  updateConversation(id: string, data: { status?: string }) {
+    return request<{ id: string; status: string }>(`/inbox/conversations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
   },
 
   sendMessage(conversationId: string, data: { message: string; account_id: string; attachment_url?: string; attachment_type?: string }) {

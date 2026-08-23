@@ -2,12 +2,19 @@ import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { api, type ConversationDetail, type Message } from '@/lib/api'
 
+export interface FailedPayload {
+  text: string
+  attachmentUrl?: string
+  attachmentType?: string
+}
+
 export const useMessagesStore = defineStore('messages', () => {
   const conversation = ref<ConversationDetail | null>(null)
   const messages = ref<Message[]>([])
   const loading = ref(false)
   const sending = ref(false)
   const error = ref<string | null>(null)
+  const lastFailed = ref<FailedPayload | null>(null)
   let eventSource: EventSource | null = null
 
   async function fetchConversation(id: string) {
@@ -30,9 +37,7 @@ export const useMessagesStore = defineStore('messages', () => {
 
     eventSource.addEventListener('message.received', (e) => {
       const data = JSON.parse(e.data)
-      // Only update if it's for this conversation
       if (data.conversation_id === conversationId) {
-        // Refetch to get full message data with attachments
         fetchConversation(conversationId)
       }
     })
@@ -61,13 +66,21 @@ export const useMessagesStore = defineStore('messages', () => {
         attachment_url: attachmentUrl,
         attachment_type: attachmentType,
       })
+      lastFailed.value = null
       await fetchConversation(conversationId)
     } catch (e: any) {
-      error.value = e.message
+      error.value = e.message || 'No se pudo enviar el mensaje'
+      lastFailed.value = { text, attachmentUrl, attachmentType }
       throw e
     } finally {
       sending.value = false
     }
+  }
+
+  async function retrySend(conversationId: string, accountId: string) {
+    if (!lastFailed.value) return
+    const { text, attachmentUrl, attachmentType } = lastFailed.value
+    await sendMessage(conversationId, text, accountId, attachmentUrl, attachmentType)
   }
 
   function $reset() {
@@ -77,7 +90,8 @@ export const useMessagesStore = defineStore('messages', () => {
     loading.value = false
     sending.value = false
     error.value = null
+    lastFailed.value = null
   }
 
-  return { conversation, messages, loading, sending, error, fetchConversation, subscribe, unsubscribe, sendMessage, $reset }
+  return { conversation, messages, loading, sending, error, lastFailed, fetchConversation, subscribe, unsubscribe, sendMessage, retrySend, $reset }
 })

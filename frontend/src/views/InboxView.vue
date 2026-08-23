@@ -1,9 +1,51 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import { useConversationsStore } from '@/stores/conversations'
+import type { Conversation } from '@/lib/api'
+import { relativeTime } from '@/lib/utils'
+import Avatar from '@/components/ui/Avatar.vue'
+import ChannelBadge from '@/components/ui/ChannelBadge.vue'
+import Skeleton from '@/components/ui/Skeleton.vue'
+import EmptyState from '@/components/ui/EmptyState.vue'
 
+const route = useRoute()
 const store = useConversationsStore()
+
+const searchInput = ref('')
+let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(searchInput, (val) => {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  debounceTimer = setTimeout(() => {
+    store.setSearch(val)
+  }, 300)
+})
+
+function clearSearch() {
+  if (debounceTimer) clearTimeout(debounceTimer)
+  searchInput.value = ''
+  store.setSearch('')
+}
+
+const channelTabs: Array<{ label: string; value?: string }> = [
+  { label: 'Todos' },
+  { label: 'WhatsApp', value: 'whatsapp' },
+  { label: 'Instagram', value: 'instagram' },
+  { label: 'Facebook', value: 'facebook' },
+]
+
+const activeId = computed(() => (typeof route.params.id === 'string' ? route.params.id : ''))
+
+function isChannelActive(value?: string): boolean {
+  return store.activeFilter.channel === value
+}
+
+function preview(conv: Conversation): string {
+  const text = conv.last_message?.text
+  if (!text) return 'Sin mensajes'
+  return conv.last_message?.direction === 'outgoing' ? `Vos: ${text}` : text
+}
 
 onMounted(() => {
   store.fetchConversations()
@@ -13,123 +55,173 @@ onMounted(() => {
 onUnmounted(() => {
   store.unsubscribe()
 })
-
-const channelColors: Record<string, string> = {
-  whatsapp: 'bg-green-100 text-green-700',
-  instagram: 'bg-pink-100 text-pink-700',
-  facebook: 'bg-blue-100 text-blue-700',
-}
-
-function formatDate(dateStr?: string) {
-  if (!dateStr) return ''
-  const d = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - d.getTime()
-  const diffMin = Math.floor(diffMs / 60000)
-  if (diffMin < 1) return 'ahora'
-  if (diffMin < 60) return `${diffMin}m`
-  const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24) return `${diffH}h`
-  const diffD = Math.floor(diffH / 24)
-  return `${diffD}d`
-}
 </script>
 
 <template>
-  <div class="flex h-[calc(100vh-53px)]">
-    <!-- Sidebar: conversation list -->
-    <div class="w-80 border-r border-neutral-200 overflow-y-auto">
-      <!-- Filters -->
-      <div class="p-3 border-b border-neutral-100 flex gap-2">
-        <button
-          @click="store.setFilter()"
-          :class="[
-            'px-3 py-1 text-xs rounded-full border transition-colors',
-            !store.activeFilter.channel
-              ? 'bg-black text-white border-black'
-              : 'bg-white text-neutral-600 border-neutral-200 hover:border-neutral-400'
-          ]"
-        >
-          Todos
-        </button>
-        <button
-          v-for="ch in ['whatsapp', 'instagram', 'facebook']"
-          :key="ch"
-          @click="store.setFilter(ch)"
-          :class="[
-            'px-3 py-1 text-xs rounded-full border transition-colors capitalize',
-            store.activeFilter.channel === ch
-              ? 'bg-black text-white border-black'
-              : 'bg-white text-neutral-600 border-neutral-200 hover:border-neutral-400'
-          ]"
-        >
-          {{ ch }}
-        </button>
+  <div class="flex h-full">
+    <!-- Panel izquierdo: lista de conversaciones -->
+    <aside
+      class="flex w-full shrink-0 flex-col border-r border-slate-200 bg-white md:w-[360px] dark:border-slate-800 dark:bg-[#101828]"
+    >
+      <!-- Header -->
+      <div class="px-4 pt-4 pb-3">
+        <h2 class="text-xl font-semibold text-slate-900 dark:text-slate-100">Inbox</h2>
+        <p class="mt-0.5 text-xs text-slate-400">
+          {{ store.filteredConversations.length }}
+          {{ store.filteredConversations.length === 1 ? 'conversación' : 'conversaciones' }}
+        </p>
       </div>
 
-      <!-- Loading -->
-      <div v-if="store.loading" class="p-8 text-center text-neutral-400 text-sm">
-        Cargando...
-      </div>
-
-      <!-- Empty state -->
-      <div v-else-if="store.conversations.length === 0" class="p-8 text-center text-neutral-400 text-sm">
-        No hay conversaciones
-      </div>
-
-      <!-- Conversation list -->
-      <RouterLink
-        v-for="conv in store.conversations"
-        :key="conv.id"
-        :to="`/inbox/${conv.id}`"
-        class="flex items-start gap-3 p-4 border-b border-neutral-100 hover:bg-neutral-50 transition-colors cursor-pointer"
-      >
-        <!-- Avatar -->
-        <div class="w-10 h-10 rounded-full bg-neutral-200 flex items-center justify-center text-sm font-medium text-neutral-600 shrink-0">
-          {{ conv.contact?.name?.charAt(0) || '?' }}
+      <!-- Buscador -->
+      <div class="px-4 pb-2">
+        <div class="relative">
+          <span
+            class="material-symbols-outlined pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xl text-slate-400"
+            aria-hidden="true"
+          >search</span>
+          <input
+            v-model="searchInput"
+            type="text"
+            placeholder="Buscar..."
+            aria-label="Buscar conversaciones"
+            class="w-full rounded-lg bg-slate-100 py-2 pr-8 pl-10 text-sm text-slate-900 outline-none transition-shadow placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-sky-400/60 dark:bg-slate-800 dark:text-slate-100"
+          />
+          <button
+            v-if="searchInput.length > 0"
+            type="button"
+            aria-label="Limpiar búsqueda"
+            class="absolute top-1/2 right-1.5 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-600 dark:hover:bg-slate-700 dark:hover:text-slate-300"
+            @click="clearSearch"
+          >
+            <span class="material-symbols-outlined text-base" aria-hidden="true">close</span>
+          </button>
         </div>
+      </div>
 
-        <div class="flex-1 min-w-0">
-          <div class="flex items-center justify-between gap-2">
-            <span class="font-medium text-sm truncate">
-              {{ conv.contact?.name || conv.contact?.phone || 'Desconocido' }}
-            </span>
-            <span class="text-xs text-neutral-400 shrink-0">
-              {{ formatDate(conv.last_message?.sent_at || conv.updated_at) }}
-            </span>
+      <!-- Tabs de filtro -->
+      <div class="flex gap-2 overflow-x-auto px-4 py-2">
+        <button
+          v-for="tab in channelTabs"
+          :key="tab.label"
+          type="button"
+          :class="[
+            'rounded-full border px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors',
+            isChannelActive(tab.value)
+              ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900'
+              : 'border-slate-200 bg-transparent text-slate-600 hover:border-slate-400 dark:border-slate-700 dark:text-slate-300',
+          ]"
+          @click="store.setFilter(tab.value)"
+        >
+          {{ tab.label }}
+        </button>
+        <button
+          type="button"
+          :class="[
+            'rounded-full border px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors',
+            store.showUnreadOnly
+              ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900'
+              : 'border-slate-200 bg-transparent text-slate-600 hover:border-slate-400 dark:border-slate-700 dark:text-slate-300',
+          ]"
+          @click="store.toggleUnreadOnly()"
+        >
+          No leídos
+        </button>
+      </div>
+
+      <!-- Lista -->
+      <div class="flex-1 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+        <!-- Loading -->
+        <template v-if="store.loading">
+          <div
+            v-for="i in 3"
+            :key="`skeleton-${i}`"
+            class="flex items-start gap-3 px-4 py-3"
+          >
+            <div class="h-10 w-10 shrink-0 animate-pulse rounded-full bg-slate-200 dark:bg-slate-700" />
+            <Skeleton :lines="2" />
+          </div>
+        </template>
+
+        <!-- Sin resultados de búsqueda -->
+        <EmptyState
+          v-else-if="store.conversations.length > 0 && store.filteredConversations.length === 0"
+          icon="search_off"
+          title="Sin resultados"
+          description="No hay conversaciones que coincidan con la búsqueda."
+        />
+
+        <!-- Vacío -->
+        <EmptyState
+          v-else-if="store.filteredConversations.length === 0"
+          icon="forum"
+          title="No hay conversaciones"
+          description="Las conversaciones aparecerán cuando tus contactos te escriban."
+        />
+
+        <!-- Conversaciones -->
+        <RouterLink
+          v-for="conv in store.filteredConversations"
+          v-else
+          :key="conv.id"
+          :to="`/inbox/${conv.id}`"
+          :class="[
+            'relative flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors',
+            conv.id === activeId
+              ? 'bg-sky-50 dark:bg-sky-500/10'
+              : 'hover:bg-slate-50 dark:hover:bg-slate-800/50',
+          ]"
+        >
+          <span
+            v-if="conv.id === activeId"
+            class="absolute inset-y-0 left-0 w-1 rounded-r-full bg-sky-400"
+            aria-hidden="true"
+          />
+
+          <Avatar :name="conv.contact?.name || conv.contact?.phone || 'Desconocido'" size="md" />
+
+          <div class="min-w-0 flex-1">
+            <div class="flex items-baseline justify-between gap-2">
+              <span
+                :class="[
+                  'truncate text-sm text-slate-900 dark:text-slate-100',
+                  conv.unread_count > 0 ? 'font-semibold' : 'font-medium',
+                ]"
+              >
+                {{ conv.contact?.name || conv.contact?.phone || 'Desconocido' }}
+              </span>
+              <span class="shrink-0 text-[11px] text-slate-400">
+                {{ relativeTime(conv.last_message?.sent_at || conv.updated_at) }}
+              </span>
+            </div>
+
+            <div class="mt-0.5">
+              <ChannelBadge :channel="conv.channel" />
+            </div>
+
+            <p class="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">
+              {{ preview(conv) }}
+            </p>
           </div>
 
-          <div class="flex items-center gap-2 mt-0.5">
+          <div class="shrink-0 pt-0.5">
             <span
-              :class="[
-                'text-[10px] px-1.5 py-0.5 rounded font-medium capitalize',
-                channelColors[conv.channel] || 'bg-neutral-100 text-neutral-600'
-              ]"
+              v-if="conv.unread_count > 0"
+              class="flex h-5 min-w-5 items-center justify-center rounded-full bg-sky-400 px-1.5 text-[10px] font-semibold text-white"
             >
-              {{ conv.channel }}
-            </span>
-            <span class="text-xs text-neutral-500 truncate">
-              {{ conv.last_message?.text || 'Sin mensajes' }}
+              {{ conv.unread_count > 9 ? '9+' : conv.unread_count }}
             </span>
           </div>
-        </div>
-
-        <!-- Unread badge -->
-        <div
-          v-if="conv.unread_count > 0"
-          class="w-5 h-5 rounded-full bg-black text-white text-[10px] flex items-center justify-center shrink-0"
-        >
-          {{ conv.unread_count > 9 ? '9+' : conv.unread_count }}
-        </div>
-      </RouterLink>
-    </div>
-
-    <!-- Main area: empty state or redirect -->
-    <div class="flex-1 flex items-center justify-center text-neutral-400">
-      <div class="text-center">
-        <div class="text-4xl mb-4">💬</div>
-        <p class="text-sm">Selecciona una conversación</p>
+        </RouterLink>
       </div>
+    </aside>
+
+    <!-- Área derecha: placeholder desktop -->
+    <div class="hidden flex-1 items-center justify-center md:flex">
+      <EmptyState
+        icon="forum"
+        title="Seleccioná una conversación"
+        description="Elegí una conversación de la lista y los mensajes aparecerán acá."
+      />
     </div>
   </div>
 </template>

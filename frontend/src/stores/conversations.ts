@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { api, type Conversation } from '@/lib/api'
 
 export const useConversationsStore = defineStore('conversations', () => {
@@ -7,7 +7,31 @@ export const useConversationsStore = defineStore('conversations', () => {
   const loading = ref(false)
   const error = ref<string | null>(null)
   const activeFilter = ref<{ channel?: string; status?: string }>({})
+  const searchQuery = ref('')
+  const showUnreadOnly = ref(false)
   let eventSource: EventSource | null = null
+
+  const filteredConversations = computed<Conversation[]>(() => {
+    let list = conversations.value
+
+    const { channel, status } = activeFilter.value
+    if (channel) list = list.filter(c => c.channel === channel)
+    if (status) list = list.filter(c => c.status === status)
+
+    if (showUnreadOnly.value) list = list.filter(c => c.unread_count > 0)
+
+    const q = searchQuery.value.trim().toLowerCase()
+    if (q) {
+      list = list.filter(c => {
+        const name = (c.contact?.name ?? '').toLowerCase()
+        const phone = (c.contact?.phone ?? '').toLowerCase()
+        const text = (c.last_message?.text ?? '').toLowerCase()
+        return name.includes(q) || phone.includes(q) || text.includes(q)
+      })
+    }
+
+    return list
+  })
 
   async function fetchConversations(showLoading = false) {
     if (showLoading) loading.value = true
@@ -67,7 +91,29 @@ export const useConversationsStore = defineStore('conversations', () => {
     fetchConversations(true)
   }
 
+  function setSearch(q: string) {
+    searchQuery.value = q
+  }
+
+  function toggleUnreadOnly() {
+    showUnreadOnly.value = !showUnreadOnly.value
+  }
+
   onUnmounted(() => unsubscribe())
 
-  return { conversations, loading, error, activeFilter, fetchConversations, subscribe, unsubscribe, setFilter }
+  return {
+    conversations,
+    loading,
+    error,
+    activeFilter,
+    searchQuery,
+    showUnreadOnly,
+    filteredConversations,
+    fetchConversations,
+    subscribe,
+    unsubscribe,
+    setFilter,
+    setSearch,
+    toggleUnreadOnly,
+  }
 })

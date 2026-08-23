@@ -1,32 +1,95 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
-  --color-background: #ffffff;
-  --color-foreground: #0a0a0a;
-  --color-muted: #f5f5f5;
-  --color-muted-foreground: #737373;
-  --color-border: #e5e5e5;
-  --color-primary: #171717;
-  --color-primary-foreground: #fafafa;
-  --color-secondary: #f5f5f5;
-  --color-secondary-foreground: #171717;
-  --color-accent: #f5f5f5;
-  --color-accent-foreground: #171717;
-  --color-destructive: #ef4444;
-  --color-destructive-foreground: #fafafa;
-  --color-ring: #171717;
-  --color-input: #e5e5e5;
-  --radius-sm: 0.25rem;
-  --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
+  /* SocialCRM — Kinetic CRM (docs/design-spec.md) */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  --color-brand: #0f172a;
+  --color-brand-accent: #38bdf8;
+  --color-brand-tertiary: #6366f1;
+  --color-whatsapp: #25d366;
+  --color-instagram: #e1306c;
+  --color-facebook: #1877f2;
+
+  --radius-card: 1rem;
 }
 
-* {
-  border-color: var(--color-border);
+:root {
+  --bg-app: #f8f9ff;
+  --fg-app: #0d1c2d;
+  --bg-card: #ffffff;
+}
+
+.dark {
+  --bg-app: #0b1220;
+  --fg-app: #e5edf8;
+  --bg-card: #101828;
+}
+
+html {
+  font-family: var(--font-sans);
 }
 
 body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
-  font-family: system-ui, -apple-system, sans-serif;
+  background-color: var(--bg-app);
+  color: var(--fg-app);
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Material Symbols (Google Fonts) */
+.material-symbols-outlined {
+  font-family: "Material Symbols Outlined";
+  font-weight: normal;
+  font-style: normal;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-block;
+  white-space: nowrap;
+  word-wrap: normal;
+  direction: ltr;
+  user-select: none;
+  -webkit-font-feature-settings: "liga";
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 500,
+    "GRAD" 0,
+    "opsz" 24;
+}
+
+/* Scrollbars sutiles */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgb(148 163 184 / 0.4) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background-color: rgb(148 163 184 / 0.4);
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(148 163 184 / 0.6);
+}
+
+.dark *::-webkit-scrollbar-thumb {
+  background-color: rgb(71 85 105 / 0.5);
+}
+
+.dark *::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(71 85 105 / 0.7);
 }
