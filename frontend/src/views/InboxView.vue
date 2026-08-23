@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
+import { onMounted, onUnmounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useConversationsStore } from '@/stores/conversations'
 
@@ -7,6 +7,11 @@ const store = useConversationsStore()
 
 onMounted(() => {
   store.fetchConversations()
+  store.subscribe()
+})
+
+onUnmounted(() => {
+  store.unsubscribe()
 })
 
 const channelColors: Record<string, string> = {

@@ -18,6 +18,7 @@ import (
 	"github.com/riont/crm/backend/internal/database"
 	"github.com/riont/crm/backend/internal/handlers"
 	"github.com/riont/crm/backend/internal/repository"
+	"github.com/riont/crm/backend/internal/sse"
 	"github.com/riont/crm/backend/internal/zernio"
 )
 
@@ -59,6 +60,9 @@ func main() {
 	// Initialize Zernio client
 	zernioClient := zernio.NewClient(cfg.ZernioAPIKey)
 
+	// Initialize SSE hub
+	sseHub := sse.NewHub()
+
 	// Initialize agent system (needs pool)
 	var agentWH *agent.WebhookHandler
 	var webhookHandler *handlers.WebhookHandler
@@ -86,6 +90,7 @@ func main() {
 			messages,
 			zernioClient,
 			cfg.ZernioWebhookSecret,
+			sseHub,
 		)
 
 		// Wire agent after-message hook
@@ -126,8 +131,10 @@ func main() {
 		return webhookHandler.HandleWebhook(c)
 	})
 
+	// SSE endpoint for real-time updates
+	e.GET("/api/events", sseHub.ServeHTTP)
+
 	// Media proxy: fetches Zernio media URLs and serves them to the frontend
-	// This bypasses CORS and auth requirements on Zernio media endpoints
 	e.GET("/api/media", func(c echo.Context) error {
 		mediaURL := c.QueryParam("url")
 		if mediaURL == "" {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, nextTick, watch, computed } from 'vue'
+import { onMounted, onUnmounted, ref, nextTick, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessagesStore } from '@/stores/messages'
 
@@ -15,7 +15,12 @@ const accountId = computed(() => store.conversation?.zernio_account_id || '')
 
 onMounted(async () => {
   await store.fetchConversation(conversationId)
+  store.subscribe(conversationId)
   scrollToBottom()
+})
+
+onUnmounted(() => {
+  store.unsubscribe()
 })
 
 watch(() => store.messages.length, () => {

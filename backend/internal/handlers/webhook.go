@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/riont/crm/backend/internal/repository"
+	"github.com/riont/crm/backend/internal/sse"
 	"github.com/riont/crm/backend/internal/zernio"
 )
 
@@ -26,6 +27,7 @@ type WebhookHandler struct {
 	zernioClient  *zernio.Client
 	webhookSecret string
 	afterMessage  AfterMessageFunc
+	sseHub        *sse.Hub
 }
 
 func NewWebhookHandler(
@@ -36,6 +38,7 @@ func NewWebhookHandler(
 	messages *repository.MessageRepository,
 	zernioClient *zernio.Client,
 	webhookSecret string,
+	sseHub *sse.Hub,
 ) *WebhookHandler {
 	return &WebhookHandler{
 		webhookEvents: webhookEvents,
@@ -45,6 +48,7 @@ func NewWebhookHandler(
 		messages:      messages,
 		zernioClient:  zernioClient,
 		webhookSecret: webhookSecret,
+		sseHub:        sseHub,
 	}
 }
 
@@ -159,6 +163,30 @@ func (h *WebhookHandler) handleMessageReceived(ctx context.Context, rawBody []by
 	}
 
 	h.conversations.IncrementUnread(ctx, conv.ID)
+
+	// Broadcast new message via SSE
+	if h.sseHub != nil {
+		contactName := ""
+		if msg.Sender.Name != nil {
+			contactName = *msg.Sender.Name
+		}
+		msgText := ""
+		if msg.Text != nil {
+			msgText = *msg.Text
+		}
+		h.sseHub.Broadcast(sse.Event{
+			Type: "message.received",
+			Data: map[string]interface{}{
+				"conversation_id": payload.Conversation.ID,
+				"channel":         channel,
+				"contact_name":    contactName,
+				"text":            msgText,
+				"direction":       msg.Direction,
+				"sent_at":         msg.SentAt,
+				"unread_count":    1,
+			},
+		})
+	}
 
 	// Invoke after-message hook (agent, notifications, etc.)
 	if h.afterMessage != nil {
