@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, nextTick, watch } from 'vue'
+import { onMounted, ref, nextTick, watch, computed } from 'vue'
 import { useRoute } from 'vue-router'
 import { useMessagesStore } from '@/stores/messages'
 
@@ -8,9 +8,10 @@ const store = useMessagesStore()
 
 const newMessage = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
-const accountId = ref('')
 
 const conversationId = route.params.id as string
+
+const accountId = computed(() => store.conversation?.zernio_account_id || '')
 
 onMounted(async () => {
   await store.fetchConversation(conversationId)
@@ -131,8 +132,8 @@ const channelEmojis: Record<string, string> = {
             Enviar
           </button>
         </div>
-        <p v-if="!accountId" class="text-xs text-amber-600 mt-2">
-          Configura el account_id en la DB para poder enviar mensajes.
+        <p v-if="store.conversation && !accountId" class="text-xs text-amber-600 mt-2">
+          No hay account_id configurado para esta conversación.
         </p>
       </div>
     </div>

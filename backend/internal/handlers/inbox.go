@@ -55,6 +55,7 @@ func (h *InboxHandler) ListConversations(c echo.Context) error {
 		Channel              string          `json:"channel"`
 		Provider             string          `json:"provider"`
 		ZernioConversationID string          `json:"zernio_conversation_id"`
+		ZernioAccountID      *string         `json:"zernio_account_id,omitempty"`
 		Status               string          `json:"status"`
 		LastInboundAt        *string         `json:"last_inbound_at,omitempty"`
 		UnreadCount          int             `json:"unread_count"`
@@ -71,6 +72,7 @@ func (h *InboxHandler) ListConversations(c echo.Context) error {
 			Channel:              conv.Channel,
 			Provider:             conv.Provider,
 			ZernioConversationID: conv.ZernioConversationID,
+			ZernioAccountID:      conv.ZernioAccountID,
 			Status:               conv.Status,
 			UnreadCount:          conv.UnreadCount,
 			CreatedAt:            conv.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),
@@ -180,6 +182,7 @@ func (h *InboxHandler) GetConversation(c echo.Context) error {
 		Channel              string          `json:"channel"`
 		Provider             string          `json:"provider"`
 		ZernioConversationID string          `json:"zernio_conversation_id"`
+		ZernioAccountID      *string         `json:"zernio_account_id,omitempty"`
 		Status               string          `json:"status"`
 		LastInboundAt        *string         `json:"last_inbound_at,omitempty"`
 		UnreadCount          int             `json:"unread_count"`
@@ -194,6 +197,7 @@ func (h *InboxHandler) GetConversation(c echo.Context) error {
 		Channel:              conv.Channel,
 		Provider:             conv.Provider,
 		ZernioConversationID: conv.ZernioConversationID,
+		ZernioAccountID:      conv.ZernioAccountID,
 		Status:               conv.Status,
 		UnreadCount:          conv.UnreadCount,
 		CreatedAt:            conv.CreatedAt.Format("2006-01-02T15:04:05Z07:00"),

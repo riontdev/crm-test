@@ -13,6 +13,7 @@ export interface Conversation {
   channel: string
   provider: string
   zernio_conversation_id: string
+  zernio_account_id?: string
   status: string
   last_inbound_at?: string
   unread_count: number
