@@ -53,7 +53,7 @@ router.beforeEach(async (to) => {
   if (!auth.initialized) await auth.init()
 
   if (to.meta.public) {
-    if (auth.isAuthenticated && to.name === 'login') return { name: 'inbox' }
+    if (auth.isAuthenticated && to.name === 'login') return { path: '/' }
     return true
   }
 
