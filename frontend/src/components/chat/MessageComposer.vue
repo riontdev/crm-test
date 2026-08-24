@@ -3,6 +3,8 @@ import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import Button from '@/components/ui/Button.vue'
 import IconButton from '@/components/ui/IconButton.vue'
 import EmojiPicker from '@/components/chat/EmojiPicker.vue'
+import TemplatePicker from '@/components/chat/TemplatePicker.vue'
+import type { Template } from '@/lib/api'
 
 export interface ComposerPayload {
   text: string
@@ -26,6 +28,16 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{ send: [payload: ComposerPayload]; 'seed-applied': [] }>()
+
+const showTemplates = ref(false)
+
+function onTemplateSelect(t: Template): void {
+  newText.value = newText.value ? `${newText.value} ${t.content}` : t.content
+  nextTick(() => {
+    autosize()
+    textarea.value?.focus()
+  })
+}
 
 watch(
   () => props.seed,
@@ -148,6 +160,21 @@ function trySend(): void {
     </div>
 
     <div class="flex items-end gap-2">
+      <div class="relative">
+        <TemplatePicker
+          v-if="showTemplates"
+          @select="onTemplateSelect"
+          @close="showTemplates = false"
+        />
+        <IconButton
+          icon="description"
+          variant="outline"
+          aria-label="Insertar plantilla"
+          :disabled="disabled"
+          @click="showTemplates = !showTemplates"
+        />
+      </div>
+
       <IconButton
         icon="attach_file"
         variant="outline"

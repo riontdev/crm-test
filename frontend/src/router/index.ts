@@ -6,13 +6,19 @@ const router = createRouter({
   routes: [
     {
       path: '/',
-      redirect: '/inbox',
+      redirect: '/dashboard',
     },
     {
       path: '/login',
       name: 'login',
       component: () => import('@/views/LoginView.vue'),
       meta: { title: 'Ingresar', public: true },
+    },
+    {
+      path: '/dashboard',
+      name: 'dashboard',
+      component: () => import('@/views/DashboardView.vue'),
+      meta: { title: 'Dashboard', requiresAuth: true },
     },
     {
       path: '/inbox',
@@ -32,6 +38,30 @@ const router = createRouter({
       name: 'agents',
       component: () => import('@/views/AgentsView.vue'),
       meta: { title: 'Agentes IA', requiresAuth: true },
+    },
+    {
+      path: '/channels',
+      name: 'channels',
+      component: () => import('@/views/ChannelsView.vue'),
+      meta: { title: 'Canales', requiresAuth: true },
+    },
+    {
+      path: '/templates',
+      name: 'templates',
+      component: () => import('@/views/TemplatesView.vue'),
+      meta: { title: 'Plantillas', requiresAuth: true },
+    },
+    {
+      path: '/reports',
+      name: 'reports',
+      component: () => import('@/views/ReportsView.vue'),
+      meta: { title: 'Reportes', requiresAuth: true },
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: () => import('@/views/SettingsView.vue'),
+      meta: { title: 'Configuración', requiresAuth: true },
     },
     {
       path: '/users',

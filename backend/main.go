@@ -24,7 +24,7 @@ import (
 )
 
 // appVersion identifies the deployed build; bump to force/verify deploys.
-const appVersion = "1.1.0"
+const appVersion = "1.2.0"
 
 func main() {
 	cfg := config.Load()
@@ -211,6 +211,22 @@ func main() {
 		agentsHandler := handlers.NewAgentsHandler(pool)
 		protected.GET("/agents", agentsHandler.ListAgents)
 		protected.PATCH("/agents/:channel", agentsHandler.UpdateAgent)
+
+		templateRepo := repository.NewTemplateRepository(pool)
+		templatesHandler := handlers.NewTemplatesHandler(templateRepo)
+		protected.GET("/templates", templatesHandler.ListTemplates)
+		protected.POST("/templates", templatesHandler.CreateTemplate)
+		protected.PUT("/templates/:id", templatesHandler.UpdateTemplate)
+		protected.DELETE("/templates/:id", templatesHandler.DeleteTemplate)
+
+		statsHandler := handlers.NewStatsHandler(pool)
+		protected.GET("/stats/overview", statsHandler.Overview)
+
+		reportsHandler := handlers.NewReportsHandler(pool)
+		protected.GET("/stats/reports", reportsHandler.Report)
+
+		channelsHandler := handlers.NewChannelsHandler(pool)
+		protected.GET("/channels/status", channelsHandler.Status)
 	}
 
 	// Users management API (admin only)
@@ -219,6 +235,10 @@ func main() {
 	users.POST("", authHandler.CreateUser)
 	users.PUT("/:id", authHandler.UpdateUser)
 	users.DELETE("/:id", authHandler.DeleteUser)
+
+	// System info (admin only)
+	handlers.AppVersion = appVersion
+	protected.GET("/system/info", handlers.SystemInfoHandler(pool), auth.RequireRole("admin"))
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)

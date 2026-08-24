@@ -64,6 +64,72 @@ export interface AgentConfig {
   max_tokens: number
 }
 
+export interface Template {
+  id: string
+  name: string
+  category: 'marketing' | 'utility' | 'soporte' | 'general'
+  content: string
+  language: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SystemInfo {
+  version: string
+  database: string
+  zernio_configured: boolean
+  openrouter_configured: boolean
+  webhook_path: string
+}
+
+export interface StatsOverview {
+  period: '24h' | '7d' | '30d'
+  totals: {
+    messages: { count: number; delta_pct?: number | null }
+    conversations: { active: number; new_in_period: number }
+    unread: { total: number }
+    ai_replies: { count: number; human_count: number }
+    first_response: { avg_seconds?: number | null }
+  }
+  by_channel: Array<{ channel: string; messages: number; conversations: number }>
+  daily_series: Array<{ date: string; incoming: number; outgoing: number }>
+}
+
+export interface ChannelStatus {
+  channel: string
+  connected: boolean
+  conversations_count: number
+  messages_count: number
+  last_activity_at?: string | null
+  agent_enabled: boolean
+}
+
+export interface ReportRow {
+  date: string
+  channel: string
+  incoming: number
+  outgoing: number
+}
+
+export interface ChannelTotals {
+  channel: string
+  incoming: number
+  outgoing: number
+  conversations: number
+}
+
+export interface ReportsData {
+  from: string
+  to: string
+  daily: ReportRow[]
+  totals_by_channel: ChannelTotals[]
+  response_times: {
+    avg_seconds?: number | null
+    min_seconds?: number | null
+    max_seconds?: number | null
+  }
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -144,6 +210,55 @@ export const api = {
     })
   },
 
+  // Templates
+  listTemplates(params?: { search?: string; category?: string }) {
+    const query = new URLSearchParams()
+    if (params?.search) query.set('search', params.search)
+    if (params?.category) query.set('category', params.category)
+    const qs = query.toString()
+    return request<{ data: Template[]; count: number }>(`/templates${qs ? '?' + qs : ''}`)
+  },
+
+  createTemplate(data: Pick<Template, 'name' | 'category' | 'content'> & { language?: string }) {
+    return request<{ data: Template }>('/templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  updateTemplate(id: string, data: Partial<Pick<Template, 'name' | 'category' | 'content' | 'language'>>) {
+    return request<{ data: Template }>(`/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  deleteTemplate(id: string) {
+    return request<{ ok: boolean }>(`/templates/${id}`, { method: 'DELETE' })
+  },
+
+  // Profile & system
+  updateProfile(data: { name?: string; current_password?: string; new_password?: string }) {
+    return request<{ user: User }>('/auth/profile', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
+  systemInfo() {
+    return request<SystemInfo>('/system/info')
+  },
+
+  // Stats
+  statsOverview(period: '24h' | '7d' | '30d' = '7d') {
+    return request<StatsOverview>(`/stats/overview?period=${period}`)
+  },
+
+  reports(from: string, to: string) {
+    const query = new URLSearchParams({ from, to })
+    return request<ReportsData>(`/stats/reports?${query.toString()}`)
+  },
+
   // Agents
   listAgents() {
     return request<{ data: AgentConfig[] }>('/agents')
@@ -154,5 +269,10 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify(data),
     })
+  },
+
+  // Channels
+  channelsStatus() {
+    return request<{ channels: ChannelStatus[]; webhook_url: string }>('/channels/status')
   },
 }

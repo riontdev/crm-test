@@ -60,6 +60,66 @@ func (s *UserService) GetByID(ctx context.Context, id string) (*User, error) {
 	return &u, nil
 }
 
+// UpdateProfile actualiza nombre y/o contraseña del propio usuario autenticado.
+func (s *UserService) UpdateProfile(ctx context.Context, userID string, name, currentPassword, newPassword *string) (*User, error) {
+	if _, err := uuid.Parse(userID); err != nil {
+		return nil, errors.New("id inválido")
+	}
+
+	var (
+		u         User
+		nameDB    string
+		passHash  string
+	)
+	err := s.pool.QueryRow(ctx,
+		`SELECT id, email, name, role, password_hash FROM users WHERE id = $1`, userID,
+	).Scan(&u.ID, &u.Email, &nameDB, &u.Role, &passHash)
+	if err != nil {
+		return nil, fmt.Errorf("usuario no encontrado: %w", err)
+	}
+	if name == nil && currentPassword == nil && newPassword == nil {
+		return &u, nil
+	}
+
+	newName := nameDB
+	if name != nil {
+		newName = strings.TrimSpace(*name)
+		if utf8.RuneCountInString(newName) < 2 || utf8.RuneCountInString(newName) > 80 {
+			return nil, errors.New("el nombre debe tener entre 2 y 80 caracteres")
+		}
+	}
+
+	newHash := passHash
+	if newPassword != nil {
+		if currentPassword == nil {
+			return nil, errors.New("completá la contraseña actual y la nueva")
+		}
+		if err := bcrypt.CompareHashAndPassword([]byte(passHash), []byte(*currentPassword)); err != nil {
+			return nil, errors.New("la contraseña actual es incorrecta")
+		}
+		if len(*newPassword) < 6 {
+			return nil, errors.New("la nueva contraseña debe tener al menos 6 caracteres")
+		}
+		h, err := bcrypt.GenerateFromPassword([]byte(*newPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash password: %w", err)
+		}
+		newHash = string(h)
+	} else if currentPassword != nil {
+		return nil, errors.New("completá la contraseña actual y la nueva")
+	}
+
+	err = s.pool.QueryRow(ctx,
+		`UPDATE users SET name = $1, password_hash = $2, updated_at = now()
+		 WHERE id = $3 RETURNING id, email, name, role`,
+		newName, newHash, userID,
+	).Scan(&u.ID, &u.Email, &u.Name, &u.Role)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update profile: %w", err)
+	}
+	return &u, nil
+}
+
 func (s *UserService) List(ctx context.Context) ([]User, error) {
 	rows, err := s.pool.Query(ctx,
 		`SELECT id, email, name, role, created_at, updated_at FROM users ORDER BY created_at ASC`)

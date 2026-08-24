@@ -9,10 +9,15 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/riont/crm/backend/internal/auth"
 )
 
 const sessionCookieName = "crm_session"
+
+// AppVersion la asigna main.go al arrancar (fuente: const appVersion).
+var AppVersion = "dev"
 
 func containsNotFound(err error) bool {
 	msg := err.Error()
@@ -102,6 +107,54 @@ func (h *AuthHandler) Me(c echo.Context) error {
 		response["session_expires_at"] = claims.ExpiresAt.Time.UTC().Format(time.RFC3339)
 	}
 	return c.JSON(http.StatusOK, response)
+}
+
+// Profile updates the authenticated user's own name/password.
+// PATCH /api/auth/profile
+func (h *AuthHandler) Profile(c echo.Context) error {
+	if !h.ensureService(c) {
+		return nil
+	}
+
+	var req struct {
+		Name            *string `json:"name"`
+		CurrentPassword *string `json:"current_password"`
+		NewPassword     *string `json:"new_password"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "cuerpo inválido"})
+	}
+
+	userID, _ := c.Get("user_id").(string)
+	user, err := h.users.UpdateProfile(c.Request().Context(), userID, req.Name, req.CurrentPassword, req.NewPassword)
+	if err != nil {
+		if containsNotFound(err) || err.Error() == "id inválido" {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "usuario no encontrado"})
+		}
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"user": user})
+}
+
+// SystemInfoHandler reports system status. Admin only.
+// GET /api/system/info
+func SystemInfoHandler(pool *pgxpool.Pool) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		dbStatus := "error"
+		if pool != nil {
+			if err := pool.Ping(c.Request().Context()); err == nil {
+				dbStatus = "ok"
+			}
+		}
+
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"version":               AppVersion,
+			"database":              dbStatus,
+			"zernio_configured":     os.Getenv("ZERNIO_API_KEY") != "",
+			"openrouter_configured": os.Getenv("OPENROUTER_API_KEY") != "",
+			"webhook_path":          "/webhook/zernio",
+		})
+	}
 }
 
 // Logout clears the session cookie.
