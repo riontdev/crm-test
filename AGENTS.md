@@ -15,7 +15,7 @@ Una bandeja única donde entran y se responden WhatsApp, Instagram DM y Facebook
 
 | Servicio | URL |
 |---|---|
-| Frontend | `https://crm-test-xi-gilt.vercel.app` |
+| Frontend | `https://formas3d-crm.vercel.app` |
 | Backend | `https://crm-test-production-6d2d.up.railway.app` |
 | Webhook | `POST https://crm-test-production-6d2d.up.railway.app/webhook/zernio` |
 | Health | `GET /health` |
