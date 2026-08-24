@@ -114,13 +114,17 @@ func (h *ChannelsHandler) Status(c echo.Context) error {
 		WebhookURL: webhookURL(c),
 	}
 	for _, ch := range channelOrder {
-		lastAct := lastActByChannel[ch]
 		cs := channelStatus{
 			Channel:            ch,
 			ConversationsCount: convsByChannel[ch],
 			MessagesCount:      msgsByChannel[ch],
-			LastActivityAt:     &lastAct,
 			AgentEnabled:       agentsByChannel[ch],
+		}
+		if msgsByChannel[ch] > 0 {
+			if t, ok := lastActByChannel[ch]; ok {
+				lastAct := t
+				cs.LastActivityAt = &lastAct
+			}
 		}
 		cs.Connected = cs.ConversationsCount > 0
 		resp.Channels = append(resp.Channels, cs)
