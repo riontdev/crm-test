@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { api, type ConversationDetail } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
 import { useUiStore } from '@/stores/ui'
+import { useUsersStore } from '@/stores/users'
 import Avatar from '@/components/ui/Avatar.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
@@ -18,6 +19,7 @@ const props = defineProps<Props>()
 const emit = defineEmits<{ close: []; archived: [] }>()
 
 const ui = useUiStore()
+const usersStore = useUsersStore()
 
 const showArchiveConfirm = ref(false)
 const archiving = ref(false)
@@ -58,16 +60,49 @@ async function saveNotes() {
   }
 }
 
+const assigneeDraft = ref('')
+const origAssigned = ref('')
+const savingAssignee = ref(false)
+
 watch(
   () => props.conversation?.id,
   () => {
     showArchiveConfirm.value = false
     archiveError.value = null
+    origAssigned.value = props.conversation?.assigned_to?.id ?? ''
+    assigneeDraft.value = origAssigned.value
   },
+  { immediate: true },
 )
 
 const contact = computed(() => props.conversation?.contact)
 const isArchived = computed(() => props.conversation?.status === 'archived')
+
+const usersOptions = computed(() => usersStore.users)
+
+onMounted(() => {
+  if (usersStore.users.length === 0) void usersStore.fetchUsers()
+})
+
+async function onAssigneeChange() {
+  const conversation = props.conversation
+  if (!conversation) return
+  const value = assigneeDraft.value || null
+  if (value === (origAssigned.value || null)) return
+  savingAssignee.value = true
+  try {
+    await api.updateConversation(conversation.id, { assigned_to: value })
+    const name = value ? (usersStore.users.find((u) => u.id === value)?.name ?? '') : ''
+    conversation.assigned_to = value ? { id: value, name } : null
+    origAssigned.value = value ?? ''
+    ui.success('Responsable actualizado')
+  } catch (e: any) {
+    assigneeDraft.value = origAssigned.value
+    ui.error(e.message || 'No se pudo actualizar el responsable')
+  } finally {
+    savingAssignee.value = false
+  }
+}
 
 const messageCount = computed(() => props.conversation?.messages?.length ?? 0)
 
@@ -151,6 +186,29 @@ async function handleArchive() {
         </h4>
         <div class="flex flex-wrap gap-1.5">
           <Badge v-for="tag in contact?.tags" :key="tag" variant="accent" size="sm">{{ tag }}</Badge>
+        </div>
+      </section>
+
+      <!-- Responsable -->
+      <section>
+        <h4 class="mb-2 text-[11px] font-semibold tracking-wider text-slate-400 uppercase dark:text-slate-500">
+          Responsable
+        </h4>
+        <div class="relative">
+          <select
+            v-model="assigneeDraft"
+            :disabled="savingAssignee"
+            aria-label="Asignar responsable"
+            class="w-full appearance-none rounded-xl border border-slate-200 bg-slate-50/60 px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-400 disabled:opacity-60 dark:border-slate-800 dark:bg-slate-800/40 dark:text-slate-200"
+            @change="onAssigneeChange"
+          >
+            <option value="">Sin asignar</option>
+            <option v-for="u in usersOptions" :key="u.id" :value="u.id">{{ u.name }}</option>
+          </select>
+          <span
+            class="material-symbols-outlined pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-base text-slate-400"
+            aria-hidden="true"
+          >expand_more</span>
         </div>
       </section>
 

@@ -18,6 +18,11 @@ export interface Contact {
   notes?: string
 }
 
+export interface Assignee {
+  id: string
+  name: string
+}
+
 export interface Conversation {
   id: string
   channel: string
@@ -30,6 +35,7 @@ export interface Conversation {
   created_at: string
   updated_at: string
   contact?: Contact
+  assigned_to?: Assignee | null
   last_message?: {
     text?: string
     direction: string
@@ -168,20 +174,26 @@ export const api = {
   },
 
   // Conversations
-  listConversations(params?: { channel?: string; status?: string }) {
+  listConversations(params?: { channel?: string; status?: string; offset?: number }) {
+    const CONVERSATIONS_PAGE_LIMIT = 30
     const query = new URLSearchParams()
     if (params?.channel) query.set('channel', params.channel)
     if (params?.status) query.set('status', params.status)
+    query.set('limit', String(CONVERSATIONS_PAGE_LIMIT))
+    if (params?.offset !== undefined) query.set('offset', String(params.offset))
     const qs = query.toString()
-    return request<{ data: Conversation[]; count: number }>(`/inbox/conversations${qs ? '?' + qs : ''}`)
+    return request<{
+      data: Conversation[]
+      meta?: { total: number; limit: number; offset: number }
+    }>(`/inbox/conversations${qs ? '?' + qs : ''}`)
   },
 
   getConversation(id: string) {
     return request<ConversationDetail>(`/inbox/conversations/${id}`)
   },
 
-  updateConversation(id: string, data: { status?: string }) {
-    return request<{ id: string; status: string }>(`/inbox/conversations/${id}`, {
+  updateConversation(id: string, data: { status?: string; assigned_to?: string | null }) {
+    return request<{ id: string; status: string; assigned_to: Assignee | null }>(`/inbox/conversations/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
     })

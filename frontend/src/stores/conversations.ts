@@ -1,15 +1,23 @@
 import { defineStore } from 'pinia'
 import { ref, computed, onUnmounted } from 'vue'
 import { api, type Conversation } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth'
 
 export const useConversationsStore = defineStore('conversations', () => {
+  const auth = useAuthStore()
+
   const conversations = ref<Conversation[]>([])
   const loading = ref(false)
+  const loadingMore = ref(false)
+  const total = ref(0)
   const error = ref<string | null>(null)
   const activeFilter = ref<{ channel?: string; status?: string }>({})
   const searchQuery = ref('')
   const showUnreadOnly = ref(false)
+  const mineOnly = ref(false)
   let eventSource: EventSource | null = null
+
+  const hasMore = computed(() => conversations.value.length < total.value)
 
   const filteredConversations = computed<Conversation[]>(() => {
     let list = conversations.value
@@ -19,6 +27,10 @@ export const useConversationsStore = defineStore('conversations', () => {
     if (status) list = list.filter(c => c.status === status)
 
     if (showUnreadOnly.value) list = list.filter(c => c.unread_count > 0)
+    if (mineOnly.value) {
+      const userId = auth.user?.id
+      list = list.filter(c => !!userId && c.assigned_to?.id === userId)
+    }
 
     const q = searchQuery.value.trim().toLowerCase()
     if (q) {
@@ -33,16 +45,35 @@ export const useConversationsStore = defineStore('conversations', () => {
     return list
   })
 
-  async function fetchConversations(showLoading = false) {
+  async function fetchFirstPage(showLoading = false) {
     if (showLoading) loading.value = true
     error.value = null
     try {
-      const res = await api.listConversations(activeFilter.value)
+      const res = await api.listConversations({ ...activeFilter.value, offset: 0 })
       conversations.value = res.data || []
+      total.value = res.meta?.total ?? conversations.value.length
     } catch (e: any) {
       error.value = e.message
     } finally {
       if (showLoading) loading.value = false
+    }
+  }
+
+  async function loadMore() {
+    if (!hasMore.value || loadingMore.value || loading.value) return
+    loadingMore.value = true
+    try {
+      const offset = conversations.value.length
+      const res = await api.listConversations({ ...activeFilter.value, offset })
+      const existingIds = new Set(conversations.value.map(c => c.id))
+      for (const conv of res.data || []) {
+        if (!existingIds.has(conv.id)) conversations.value.push(conv)
+      }
+      total.value = res.meta?.total ?? total.value
+    } catch (e: any) {
+      error.value = e.message
+    } finally {
+      loadingMore.value = false
     }
   }
 
@@ -65,8 +96,8 @@ export const useConversationsStore = defineStore('conversations', () => {
         const conv = conversations.value.splice(idx, 1)[0]
         conversations.value.unshift(conv)
       } else {
-        // New conversation, refetch list
-        fetchConversations()
+        // New conversation, refetch first page
+        fetchFirstPage()
       }
     })
 
@@ -88,7 +119,7 @@ export const useConversationsStore = defineStore('conversations', () => {
 
   function setFilter(channel?: string, status?: string) {
     activeFilter.value = { channel, status }
-    fetchConversations(true)
+    fetchFirstPage(true)
   }
 
   function setSearch(q: string) {
@@ -99,21 +130,32 @@ export const useConversationsStore = defineStore('conversations', () => {
     showUnreadOnly.value = !showUnreadOnly.value
   }
 
+  function toggleMine() {
+    mineOnly.value = !mineOnly.value
+  }
+
   onUnmounted(() => unsubscribe())
 
   return {
     conversations,
     loading,
+    loadingMore,
+    total,
+    hasMore,
     error,
     activeFilter,
     searchQuery,
     showUnreadOnly,
+    mineOnly,
     filteredConversations,
-    fetchConversations,
+    fetchFirstPage,
+    fetchConversations: fetchFirstPage,
+    loadMore,
     subscribe,
     unsubscribe,
     setFilter,
     setSearch,
     toggleUnreadOnly,
+    toggleMine,
   }
 })

@@ -198,6 +198,9 @@ webhook event
 | PUT | `/api/templates/:id` | Editar plantilla (parcial) |
 | DELETE | `/api/templates/:id` | Eliminar plantilla |
 | PATCH | `/api/auth/profile` | Perfil propio {name?,current_password+new_password?} |
+| PATCH | `/api/inbox/conversations/:id` | también acepta {assigned_to?: uuid\|null} |
+| GET | `/api/inbox/unread?limit=8` | Feed no leídos + total (campanita) |
+| GET | `/api/inbox/search?q=` | Búsqueda global (nombre/teléfono/texto) |
 | GET 🔒 | `/api/system/info` | Versión, DB, Zernio/OpenRouter configurados |
 
 ### Env vars (Railway)
@@ -232,6 +235,7 @@ webhook event
 15. **Fase 15** — Canales ✅ (/api/channels/status estado real + webhook URL + guía IG/FB)
 16. **Fase 16** — Reportes ✅ (/api/stats/reports + barras apiladas SVG + export CSV)
 17. **Fase 17** — Configuración ✅ (perfil/password propio + /api/system/info admin)
+18. **Fase 18** — Producto inbox ✅ (búsqueda global TopBar, notificaciones SSE, asignación de conversaciones, paginación/infinite scroll)
 
 ## Pendiente
 

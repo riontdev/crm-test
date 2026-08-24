@@ -35,6 +35,25 @@ const channelTabs: Array<{ label: string; value?: string }> = [
   { label: 'Facebook', value: 'facebook' },
 ]
 
+const listEl = ref<HTMLElement | null>(null)
+
+const headerCount = computed(() =>
+  store.total > 0 ? store.total : store.filteredConversations.length,
+)
+
+function onListScroll() {
+  const el = listEl.value
+  if (!el) return
+  if (
+    el.scrollTop + el.clientHeight >= el.scrollHeight - 240 &&
+    store.hasMore &&
+    !store.loadingMore &&
+    !store.loading
+  ) {
+    store.loadMore()
+  }
+}
+
 const activeId = computed(() => (typeof route.params.id === 'string' ? route.params.id : ''))
 
 function isChannelActive(value?: string): boolean {
@@ -48,7 +67,7 @@ function preview(conv: Conversation): string {
 }
 
 onMounted(() => {
-  store.fetchConversations()
+  store.fetchFirstPage()
   store.subscribe()
 })
 
@@ -67,8 +86,8 @@ onUnmounted(() => {
       <div class="px-4 pt-4 pb-3">
         <h2 class="text-xl font-semibold text-slate-900 dark:text-slate-100">Inbox</h2>
         <p class="mt-0.5 text-xs text-slate-400">
-          {{ store.filteredConversations.length }}
-          {{ store.filteredConversations.length === 1 ? 'conversación' : 'conversaciones' }}
+          {{ headerCount }}
+          {{ headerCount === 1 ? 'conversación' : 'conversaciones' }}
         </p>
       </div>
 
@@ -126,10 +145,26 @@ onUnmounted(() => {
         >
           No leídos
         </button>
+        <button
+          type="button"
+          :class="[
+            'rounded-full border px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors',
+            store.mineOnly
+              ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900'
+              : 'border-slate-200 bg-transparent text-slate-600 hover:border-slate-400 dark:border-slate-700 dark:text-slate-300',
+          ]"
+          @click="store.toggleMine()"
+        >
+          Asignadas a mí
+        </button>
       </div>
 
       <!-- Lista -->
-      <div class="flex-1 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800">
+      <div
+        ref="listEl"
+        class="flex-1 divide-y divide-slate-100 overflow-y-auto dark:divide-slate-800"
+        @scroll.passive="onListScroll"
+      >
         <!-- Loading -->
         <template v-if="store.loading">
           <div
@@ -189,6 +224,14 @@ onUnmounted(() => {
               >
                 {{ conv.contact?.name || conv.contact?.phone || 'Desconocido' }}
               </span>
+              <span
+                v-if="conv.assigned_to"
+                class="inline-flex shrink-0 items-center gap-1 text-[10px] font-medium text-slate-500 dark:text-slate-400"
+                :title="`Asignada a ${conv.assigned_to.name}`"
+              >
+                <span class="material-symbols-outlined text-xs" aria-hidden="true">person</span>
+                <span class="max-w-24 truncate">{{ conv.assigned_to.name }}</span>
+              </span>
               <span class="shrink-0 text-[11px] text-slate-400">
                 {{ relativeTime(conv.last_message?.sent_at || conv.updated_at) }}
               </span>
@@ -212,6 +255,17 @@ onUnmounted(() => {
             </span>
           </div>
         </RouterLink>
+
+        <!-- Sentinel: paginación -->
+        <div v-if="store.loadingMore" class="py-3" role="status" aria-label="Cargando más conversaciones">
+          <div class="mx-auto my-3 h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-sky-400 dark:border-slate-600 dark:border-t-sky-400" />
+        </div>
+        <p
+          v-else-if="!store.hasMore && store.filteredConversations.length > 0"
+          class="py-3 text-center text-[11px] text-slate-400 dark:text-slate-500"
+        >
+          Mostrando todas las conversaciones
+        </p>
       </div>
     </aside>
 
