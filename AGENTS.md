@@ -190,6 +190,15 @@ webhook event
 | POST 🔒 | `/api/users` | Crear usuario {email,name,password,role} |
 | PUT 🔒 | `/api/users/:id` | Editar {name?,role?,password?} |
 | DELETE 🔒 | `/api/users/:id` | Eliminar (protege último admin y auto-borrado) |
+| GET | `/api/stats/overview?period=24h\|7d\|30d` | KPIs del dashboard (mensajes, Δ%, canales, IA vs humano, 1ª respuesta) |
+| GET | `/api/stats/reports?from&to` | Series diarias por canal + tiempos de respuesta (máx 92 días) |
+| GET | `/api/channels/status` | Estado real por canal + webhook URL |
+| GET | `/api/templates?search=&category=` | Listar plantillas |
+| POST | `/api/templates` | Crear plantilla {name,category,content,language?} |
+| PUT | `/api/templates/:id` | Editar plantilla (parcial) |
+| DELETE | `/api/templates/:id` | Eliminar plantilla |
+| PATCH | `/api/auth/profile` | Perfil propio {name?,current_password+new_password?} |
+| GET 🔒 | `/api/system/info` | Versión, DB, Zernio/OpenRouter configurados |
 
 ### Env vars (Railway)
 
@@ -218,13 +227,28 @@ webhook event
 10. **Fase 10** — Agente IA: **construido y apagado** — falta solo cargar `OPENROUTER_API_KEY` y activar por canal
 11. **Fase 11** — Conectar más cuentas (Instagram, Facebook) — PENDIENTE
 12. **Fase 12** — Auth + Usuarios ✅ (login cookie JWT, CRUD usuarios admin-only, usuario default riontdev@gmail.com)
+13. **Fase 13** — Dashboard KPIs ✅ (home post-login, /api/stats/overview, gráficos SVG sin dependencias)
+14. **Fase 14** — Plantillas ✅ (migración 000009 templates + CRUD + picker en composer)
+15. **Fase 15** — Canales ✅ (/api/channels/status estado real + webhook URL + guía IG/FB)
+16. **Fase 16** — Reportes ✅ (/api/stats/reports + barras apiladas SVG + export CSV)
+17. **Fase 17** — Configuración ✅ (perfil/password propio + /api/system/info admin)
 
 ## Pendiente
 
 - Cargar `OPENROUTER_API_KEY` en Railway → activar agentes desde UI (AgentsView editable ya operativa)
 - Fase 11: conectar cuentas Instagram/Facebook en Zernio
 - Grabar mensajes de audio (botón mic + MediaRecorder) — postergado
-- Páginas del diseño Stitch no implementadas: Dashboard KPIs, Canales, Plantillas, Reportes, Configuración
+- Métricas del diseño sin datos reales hoy: CSAT y Resolution Rate (requerirían encuestas/tickets)
+
+### templates
+- id: uuid PK
+- name: text NOT NULL (2..80)
+- category: text default 'general' (marketing | utility | soporte | general)
+- content: text NOT NULL (variables {{1}}, {{2}}...)
+- language: text default 'es'
+- created_at / updated_at: timestamptz
+
+Seed: Bienvenida, Horarios, Seguimiento, Promo.
 
 ### users
 - id: uuid PK
