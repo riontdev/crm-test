@@ -35,7 +35,13 @@ const tooltipPos = ref({ x: 0, y: 0 })
 
 const count = computed(() => props.rows.length)
 
-const vbWidth = computed(() => PAD_LEFT + Math.max(count.value, 1) * SLOT_W + PAD_RIGHT)
+const MIN_VB_WIDTH = 560
+
+const contentW = computed(() => PAD_LEFT + Math.max(count.value, 1) * SLOT_W + PAD_RIGHT)
+
+const vbWidth = computed(() => Math.max(contentW.value, MIN_VB_WIDTH))
+
+const offsetX = computed(() => (vbWidth.value - contentW.value) / 2)
 
 const baseY = computed(() => props.height - PAD_BOTTOM)
 
@@ -181,89 +187,91 @@ function onLeave() {
       role="img"
       aria-label="Gráfico de barras apiladas"
     >
-      <g>
-        <line
-          v-for="(g, idx) in gridLines"
-          :key="'grid-' + idx"
-          :x1="PAD_LEFT"
-          :x2="vbWidth - PAD_RIGHT"
-          :y1="g.y"
-          :y2="g.y"
-          class="stroke-slate-200 dark:stroke-slate-800"
-          stroke-width="1"
-          stroke-dasharray="4 4"
-        />
-        <text
-          v-for="(g, idx) in gridLines"
-          :key="'grid-label-' + idx"
-          :x="PAD_LEFT - 6"
-          :y="g.y + 3"
-          text-anchor="end"
-          class="fill-slate-400 text-[10px] dark:fill-slate-500"
-        >
-          {{ formatY(g.value) }}
-        </text>
-      </g>
+      <g :transform="`translate(${offsetX},0)`">
+        <g>
+          <line
+            v-for="(g, idx) in gridLines"
+            :key="'grid-' + idx"
+            :x1="PAD_LEFT"
+            :x2="contentW - PAD_RIGHT"
+            :y1="g.y"
+            :y2="g.y"
+            class="stroke-slate-200 dark:stroke-slate-800"
+            stroke-width="1"
+            stroke-dasharray="4 4"
+          />
+          <text
+            v-for="(g, idx) in gridLines"
+            :key="'grid-label-' + idx"
+            :x="PAD_LEFT - 6"
+            :y="g.y + 3"
+            text-anchor="end"
+            class="fill-slate-400 text-[10px] dark:fill-slate-500"
+          >
+            {{ formatY(g.value) }}
+          </text>
+        </g>
 
-      <rect
-        v-for="b in bars"
-        :key="'band-' + b.i"
-        :x="PAD_LEFT + b.i * SLOT_W"
-        y="0"
-        :width="SLOT_W"
-        :height="height"
-        class="transition-colors duration-150"
-        :class="hoveredIndex === b.i ? 'fill-slate-500/5 dark:fill-slate-400/10' : 'fill-transparent'"
-      />
-
-      <line
-        :x1="PAD_LEFT"
-        :x2="vbWidth - PAD_RIGHT"
-        :y1="baseY"
-        :y2="baseY"
-        class="stroke-slate-300 dark:stroke-slate-700"
-        stroke-width="1"
-      />
-
-      <g
-        v-for="b in bars"
-        :key="'bar-' + b.i"
-        class="transition-opacity duration-150"
-        :class="hoveredIndex !== null && hoveredIndex !== b.i ? 'opacity-40' : 'opacity-100'"
-      >
-        <rect
-          v-for="(seg, sIdx) in b.segs"
-          v-show="seg.h > 0"
-          :key="'seg-' + b.i + '-' + sIdx"
-          :x="b.x"
-          :y="seg.y"
-          :width="b.w"
-          :height="seg.h"
-          :fill="segmentColor(seg.key)"
-          rx="1.5"
-        />
-        <text
-          v-if="b.i % labelStep === 0"
-          :x="PAD_LEFT + b.i * SLOT_W + SLOT_W / 2"
-          :y="height - 6"
-          text-anchor="middle"
-          class="fill-slate-400 text-[10px] dark:fill-slate-500"
-        >
-          {{ shortLabel(b.label) }}
-        </text>
-      </g>
-
-      <g>
         <rect
           v-for="b in bars"
-          :key="'capture-' + b.i"
+          :key="'band-' + b.i"
           :x="PAD_LEFT + b.i * SLOT_W"
           y="0"
           :width="SLOT_W"
           :height="height"
-          class="cursor-pointer fill-transparent"
-          @mousemove="onMove($event, b.i)"
+          class="transition-colors duration-150"
+          :class="hoveredIndex === b.i ? 'fill-slate-500/5 dark:fill-slate-400/10' : 'fill-transparent'"
         />
+
+        <line
+          :x1="PAD_LEFT"
+          :x2="contentW - PAD_RIGHT"
+          :y1="baseY"
+          :y2="baseY"
+          class="stroke-slate-300 dark:stroke-slate-700"
+          stroke-width="1"
+        />
+
+        <g
+          v-for="b in bars"
+          :key="'bar-' + b.i"
+          class="transition-opacity duration-150"
+          :class="hoveredIndex !== null && hoveredIndex !== b.i ? 'opacity-40' : 'opacity-100'"
+        >
+          <rect
+            v-for="(seg, sIdx) in b.segs"
+            v-show="seg.h > 0"
+            :key="'seg-' + b.i + '-' + sIdx"
+            :x="b.x"
+            :y="seg.y"
+            :width="b.w"
+            :height="seg.h"
+            :fill="segmentColor(seg.key)"
+            rx="1.5"
+          />
+          <text
+            v-if="b.i % labelStep === 0"
+            :x="PAD_LEFT + b.i * SLOT_W + SLOT_W / 2"
+            :y="height - 6"
+            text-anchor="middle"
+            class="fill-slate-400 text-[10px] dark:fill-slate-500"
+          >
+            {{ shortLabel(b.label) }}
+          </text>
+        </g>
+
+        <g>
+          <rect
+            v-for="b in bars"
+            :key="'capture-' + b.i"
+            :x="PAD_LEFT + b.i * SLOT_W"
+            y="0"
+            :width="SLOT_W"
+            :height="height"
+            class="cursor-pointer fill-transparent"
+            @mousemove="onMove($event, b.i)"
+          />
+        </g>
       </g>
     </svg>
 

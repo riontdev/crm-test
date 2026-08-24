@@ -17,7 +17,7 @@ const props = withDefaults(defineProps<Props>(), {
   invertTrend: false,
 })
 
-const showTrend = computed(() => props.trend !== undefined)
+const showTrend = computed(() => props.trend !== undefined && props.trend !== null)
 
 type TrendState = 'up' | 'down' | 'flat'
 

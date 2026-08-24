@@ -191,7 +191,7 @@ onMounted(() => {
               {{ store.webhookUrl }}
             </code>
             <IconButton
-              icon="copy_content"
+              icon="content_copy"
               size="sm"
               title="Copiar URL del webhook"
               aria-label="Copiar URL del webhook"

@@ -26,7 +26,13 @@ const tooltipPos = ref({ x: 0, y: 0 })
 
 const count = computed(() => props.series.length)
 
-const vbWidth = computed(() => PAD_LEFT + Math.max(count.value, 1) * SLOT_W + PAD_RIGHT)
+const MIN_VB_WIDTH = 560
+
+const contentW = computed(() => PAD_LEFT + Math.max(count.value, 1) * SLOT_W + PAD_RIGHT)
+
+const vbWidth = computed(() => Math.max(contentW.value, MIN_VB_WIDTH))
+
+const offsetX = computed(() => (vbWidth.value - contentW.value) / 2)
 
 const baseY = computed(() => props.height - PAD_BOTTOM)
 
@@ -151,98 +157,100 @@ function onLeave() {
       role="img"
       aria-label="Gráfico de volumen de mensajes por día"
     >
-      <g>
-        <line
-          v-for="(g, idx) in gridLines"
-          :key="'grid-' + idx"
-          :x1="PAD_LEFT"
-          :x2="vbWidth - PAD_RIGHT"
-          :y1="g.y"
-          :y2="g.y"
-          class="stroke-slate-200 dark:stroke-slate-800"
-          stroke-width="1"
-          stroke-dasharray="4 4"
-        />
-        <text
-          v-for="(g, idx) in gridLines"
-          :key="'grid-label-' + idx"
-          :x="PAD_LEFT - 6"
-          :y="g.y + 3"
-          text-anchor="end"
-          class="fill-slate-400 text-[10px] dark:fill-slate-500"
-        >
-          {{ formatY(g.value) }}
-        </text>
-      </g>
+      <g :transform="`translate(${offsetX},0)`">
+        <g>
+          <line
+            v-for="(g, idx) in gridLines"
+            :key="'grid-' + idx"
+            :x1="PAD_LEFT"
+            :x2="contentW - PAD_RIGHT"
+            :y1="g.y"
+            :y2="g.y"
+            class="stroke-slate-200 dark:stroke-slate-800"
+            stroke-width="1"
+            stroke-dasharray="4 4"
+          />
+          <text
+            v-for="(g, idx) in gridLines"
+            :key="'grid-label-' + idx"
+            :x="PAD_LEFT - 6"
+            :y="g.y + 3"
+            text-anchor="end"
+            class="fill-slate-400 text-[10px] dark:fill-slate-500"
+          >
+            {{ formatY(g.value) }}
+          </text>
+        </g>
 
-      <rect
-        v-for="d in days"
-        :key="'band-' + d.i"
-        :x="PAD_LEFT + d.i * SLOT_W"
-        y="0"
-        :width="SLOT_W"
-        :height="height"
-        class="transition-colors duration-150"
-        :class="
-          hoveredIndex === d.i ? 'fill-slate-500/5 dark:fill-slate-400/10' : 'fill-transparent'
-        "
-      />
-
-      <line
-        :x1="PAD_LEFT"
-        :x2="vbWidth - PAD_RIGHT"
-        :y1="baseY"
-        :y2="baseY"
-        class="stroke-slate-300 dark:stroke-slate-700"
-        stroke-width="1"
-      />
-
-      <g
-        v-for="d in days"
-        :key="'day-' + d.i"
-        class="transition-opacity duration-150"
-        :class="hoveredIndex !== null && hoveredIndex !== d.i ? 'opacity-40' : 'opacity-100'"
-      >
-        <path
-          v-if="d.hOut > 0"
-          :d="topRoundedPath(d.x, baseY - d.hIn - d.hOut, d.w, d.hOut)"
-          class="fill-indigo-500"
-        />
-        <path
-          v-else-if="d.hIn > 0"
-          :d="topRoundedPath(d.x, baseY - d.hIn, d.w, d.hIn)"
-          class="fill-sky-400"
-        />
-        <rect
-          v-if="d.hOut > 0 && d.hIn > 0"
-          :x="d.x"
-          :y="baseY - d.hIn"
-          :width="d.w"
-          :height="d.hIn"
-          class="fill-sky-400"
-        />
-        <text
-          v-if="d.i % labelStep === 0"
-          :x="PAD_LEFT + d.i * SLOT_W + SLOT_W / 2"
-          :y="height - 6"
-          text-anchor="middle"
-          class="fill-slate-400 text-[10px] dark:fill-slate-500"
-        >
-          {{ shortDate(d.date) }}
-        </text>
-      </g>
-
-      <g>
         <rect
           v-for="d in days"
-          :key="'capture-' + d.i"
+          :key="'band-' + d.i"
           :x="PAD_LEFT + d.i * SLOT_W"
           y="0"
           :width="SLOT_W"
           :height="height"
-          class="cursor-pointer fill-transparent"
-          @mousemove="onMove($event, d.i)"
+          class="transition-colors duration-150"
+          :class="
+            hoveredIndex === d.i ? 'fill-slate-500/5 dark:fill-slate-400/10' : 'fill-transparent'
+          "
         />
+
+        <line
+          :x1="PAD_LEFT"
+          :x2="contentW - PAD_RIGHT"
+          :y1="baseY"
+          :y2="baseY"
+          class="stroke-slate-300 dark:stroke-slate-700"
+          stroke-width="1"
+        />
+
+        <g
+          v-for="d in days"
+          :key="'day-' + d.i"
+          class="transition-opacity duration-150"
+          :class="hoveredIndex !== null && hoveredIndex !== d.i ? 'opacity-40' : 'opacity-100'"
+        >
+          <path
+            v-if="d.hOut > 0"
+            :d="topRoundedPath(d.x, baseY - d.hIn - d.hOut, d.w, d.hOut)"
+            class="fill-indigo-500"
+          />
+          <path
+            v-else-if="d.hIn > 0"
+            :d="topRoundedPath(d.x, baseY - d.hIn, d.w, d.hIn)"
+            class="fill-sky-400"
+          />
+          <rect
+            v-if="d.hOut > 0 && d.hIn > 0"
+            :x="d.x"
+            :y="baseY - d.hIn"
+            :width="d.w"
+            :height="d.hIn"
+            class="fill-sky-400"
+          />
+          <text
+            v-if="d.i % labelStep === 0"
+            :x="PAD_LEFT + d.i * SLOT_W + SLOT_W / 2"
+            :y="height - 6"
+            text-anchor="middle"
+            class="fill-slate-400 text-[10px] dark:fill-slate-500"
+          >
+            {{ shortDate(d.date) }}
+          </text>
+        </g>
+
+        <g>
+          <rect
+            v-for="d in days"
+            :key="'capture-' + d.i"
+            :x="PAD_LEFT + d.i * SLOT_W"
+            y="0"
+            :width="SLOT_W"
+            :height="height"
+            class="cursor-pointer fill-transparent"
+            @mousemove="onMove($event, d.i)"
+          />
+        </g>
       </g>
     </svg>
 
