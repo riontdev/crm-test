@@ -210,6 +210,27 @@ export const api = {
     })
   },
 
+  // Inbox: búsqueda global + no leídos
+  searchConversations(q: string, limit = 10) {
+    return request<{ data: Conversation[]; count: number }>(
+      `/inbox/search?q=${encodeURIComponent(q)}&limit=${limit}`,
+    )
+  },
+
+  unreadFeed(limit = 8) {
+    return request<{
+      data: Array<{
+        id: string
+        channel: string
+        contact_name: string
+        preview_text?: string | null
+        last_inbound_at?: string | null
+        unread_count: number
+      }>
+      total: number
+    }>(`/inbox/unread?limit=${limit}`)
+  },
+
   // Templates
   listTemplates(params?: { search?: string; category?: string }) {
     const query = new URLSearchParams()

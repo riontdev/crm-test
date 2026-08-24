@@ -204,6 +204,8 @@ func main() {
 		inbox.PATCH("/conversations/:id", inboxHandler.UpdateConversation)
 		inbox.POST("/conversations/:id/messages", sendHandler.SendMessage)
 		inbox.PATCH("/contacts/:id", inboxHandler.UpdateContactNotes)
+		inbox.GET("/unread", inboxHandler.UnreadFeed)
+		inbox.GET("/search", inboxHandler.Search)
 	}
 
 	// Agent config API
