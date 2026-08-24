@@ -66,7 +66,10 @@ func (h *ChannelsHandler) Status(c echo.Context) error {
 	msgsByChannel := map[string]int64{}
 	lastActByChannel := map[string]time.Time{}
 	rows, err = h.pool.Query(ctx,
-		`SELECT channel, COUNT(*), MAX(COALESCE(sent_at, created_at)) FROM messages GROUP BY channel`)
+		`SELECT cv.channel, COUNT(*), MAX(COALESCE(m.sent_at, m.created_at))
+		 FROM messages m
+		 JOIN conversations cv ON cv.id = m.conversation_id
+		 GROUP BY cv.channel`)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": "error al consultar mensajes"})
 	}
