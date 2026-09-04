@@ -54,6 +54,8 @@ export interface Message {
   platform_message_id?: string
   sent_at?: string
   created_at: string
+  client_id?: string
+  send_error?: string
 }
 
 export interface ConversationDetail extends Conversation {

@@ -50,6 +50,8 @@ const statusMeta = computed(() => {
       return { icon: 'done_all', classes: 'opacity-60', title: 'Entregado' }
     case 'failed':
       return { icon: 'error', classes: 'text-red-300', title: 'Error' }
+    case 'sending':
+      return { icon: 'schedule', classes: 'opacity-70', title: 'Enviando…' }
     default:
       return { icon: 'check', classes: 'opacity-60', title: 'Enviado' }
   }
