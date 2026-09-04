@@ -113,6 +113,7 @@ func (h *SendHandler) CreateWhatsAppTemplate(c echo.Context) error {
 	}
 
 	// Enviar a Zernio con un solo componente BODY (plantilla POSITIONAL).
+	// Nota: Zernio espera el tipo del componente en minúsculas como discriminator.
 	tplReq := zernio.CreateWhatsAppTemplateRequest{
 		AccountID:       req.AccountID,
 		Name:            req.Name,
@@ -120,7 +121,7 @@ func (h *SendHandler) CreateWhatsAppTemplate(c echo.Context) error {
 		Language:        language,
 		ParameterFormat: "POSITIONAL",
 		Components: []zernio.WhatsAppTemplateComponent{
-			{Type: "BODY", Text: req.Content},
+			{Type: "body", Text: req.Content},
 		},
 	}
 	resp, err := h.zernioClient.CreateWhatsAppTemplate(tplReq)
