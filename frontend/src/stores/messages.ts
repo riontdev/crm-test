@@ -40,15 +40,12 @@ export const useMessagesStore = defineStore('messages', () => {
       const data = JSON.parse(e.data)
       if (data.conversation_id !== conversationId) return
       // Insertar el mensaje entrante localmente en tiempo real, sin recargar
-      // toda la conversación. Dedup por external_id.
-      if (!data.external_id) {
-        fetchConversation(conversationId)
-        return
-      }
-      if (messages.value.some((m) => m.external_id === data.external_id)) return
+      // toda la conversación. Dedup por external_id (o id local si no viene).
+      const extId = data.external_id || `recv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+      if (messages.value.some((m) => m.external_id === extId)) return
       const msg: Message = {
-        id: data.message_id || data.external_id,
-        external_id: data.external_id,
+        id: data.message_id || extId,
+        external_id: extId,
         direction: data.direction || 'incoming',
         text: data.text || undefined,
         attachments: data.attachments || [],

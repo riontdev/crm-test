@@ -214,8 +214,8 @@ async function handleSend({ text, file }: { text: string; file: File | null }) {
           class="absolute inset-0 overflow-y-auto px-4 py-4 md:px-6"
           @scroll.passive="onScroll"
         >
-          <!-- Cargando -->
-          <div v-if="store.loading" class="space-y-3">
+          <!-- Cargando inicial (solo si aún no hay mensajes: no desmonta la lista) -->
+          <div v-if="store.loading && store.messages.length === 0" class="space-y-3">
             <template v-for="i in 5" :key="i">
               <div :class="['flex', i % 2 === 0 ? 'justify-end' : 'justify-start']">
                 <div
@@ -231,9 +231,9 @@ async function handleSend({ text, file }: { text: string; file: File | null }) {
             </template>
           </div>
 
-          <!-- Error -->
+          <!-- Error (solo si no hay mensajes) -->
           <EmptyState
-            v-else-if="store.error && !store.loading"
+            v-else-if="store.error && !store.loading && store.messages.length === 0"
             icon="cloud_off"
             title="No se pudieron cargar los mensajes"
             :description="store.error ?? ''"
@@ -253,17 +253,19 @@ async function handleSend({ text, file }: { text: string; file: File | null }) {
 
           <!-- Agrupados por día -->
           <template v-else>
-            <template v-for="group in groupedMessages" :key="group.label">
-              <DayDivider :label="group.label" />
-              <div class="space-y-2">
-                <MessageBubble
-                  v-for="msg in group.items"
-                  :key="msg.id"
-                  :message="msg"
-                  :channel="store.conversation?.channel"
-                />
-              </div>
-            </template>
+            <div class="space-y-2">
+              <template v-for="group in groupedMessages" :key="group.label">
+                <DayDivider :label="group.label" />
+                <div class="space-y-2">
+                  <MessageBubble
+                    v-for="msg in group.items"
+                    :key="msg.id"
+                    :message="msg"
+                    :channel="store.conversation?.channel"
+                  />
+                </div>
+              </template>
+            </div>
           </template>
         </div>
 
