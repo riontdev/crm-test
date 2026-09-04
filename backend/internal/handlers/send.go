@@ -80,6 +80,72 @@ func (h *SendHandler) ListWhatsAppTemplates(c echo.Context) error {
 	return c.JSON(http.StatusOK, map[string]interface{}{"templates": templates})
 }
 
+// CreateWhatsAppTemplate creates a new WhatsApp message template in WABA.
+// POST /api/whatsapp/templates
+func (h *SendHandler) CreateWhatsAppTemplate(c echo.Context) error {
+	var req struct {
+		AccountID string `json:"account_id"`
+		Name      string `json:"name"`
+		Category  string `json:"category"`
+		Language  string `json:"language"`
+		Content   string `json:"content"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
+	}
+	if req.AccountID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "account_id is required"})
+	}
+	if req.Name == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "El nombre es obligatorio"})
+	}
+	if req.Content == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "El contenido es obligatorio"})
+	}
+	category := req.Category
+	if category == "" {
+		category = "UTILITY"
+	}
+	category = normalizeTemplateCategory(category)
+	language := req.Language
+	if language == "" {
+		language = "es"
+	}
+
+	// Enviar a Zernio con un solo componente BODY (plantilla POSITIONAL).
+	tplReq := zernio.CreateWhatsAppTemplateRequest{
+		AccountID:       req.AccountID,
+		Name:            req.Name,
+		Category:        category,
+		Language:        language,
+		ParameterFormat: "POSITIONAL",
+		Components: []zernio.WhatsAppTemplateComponent{
+			{Type: "BODY", Text: req.Content},
+		},
+	}
+	resp, err := h.zernioClient.CreateWhatsAppTemplate(tplReq)
+	if err != nil {
+		return c.JSON(http.StatusBadGateway, map[string]string{"error": fmt.Sprintf("failed to create template: %v", err)})
+	}
+
+	return c.JSON(http.StatusOK, map[string]interface{}{
+		"success":  resp.Success,
+		"template": resp.Template,
+	})
+}
+
+// normalizeTemplateCategory maps UI-friendly categories to the WABA enum.
+func normalizeTemplateCategory(cat string) string {
+	switch cat {
+	case "marketing":
+		return "MARKETING"
+	case "authentication", "auth":
+		return "AUTHENTICATION"
+	default:
+		return "UTILITY"
+	}
+}
+
 // SendMessage sends a reply to a conversation.
 // POST /api/inbox/conversations/:id/messages
 func (h *SendHandler) SendMessage(c echo.Context) error {
@@ -234,9 +300,9 @@ func (h *SendHandler) SendMessage(c echo.Context) error {
 		// Log error but still return success to frontend
 		fmt.Printf("warning: message sent to Zernio but failed to persist: %v\n", err)
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"success":     true,
-			"message_id":  zernioRespMsg.Data.MessageID,
-			"persisted":   false,
+			"success":    true,
+			"message_id": zernioRespMsg.Data.MessageID,
+			"persisted":  false,
 		})
 	}
 

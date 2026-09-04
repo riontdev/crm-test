@@ -75,6 +75,32 @@ func (c *Client) ListWhatsAppTemplates(accountID string) (*WhatsAppTemplatesResp
 	return &resp, nil
 }
 
+// CreateWhatsAppTemplate creates a new WhatsApp message template via
+// POST /v1/whatsapp/templates. Custom templates are submitted to Meta for
+// review (up to 24h); library templates (when libraryTemplateName is set) are
+// pre-approved. Contract per Zernio OpenAPI.
+func (c *Client) CreateWhatsAppTemplate(req CreateWhatsAppTemplateRequest) (*CreateWhatsAppTemplateResponse, error) {
+	u := fmt.Sprintf("%s/whatsapp/templates", c.baseURL)
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequest(http.MethodPost, u, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	var resp CreateWhatsAppTemplateResponse
+	if err := c.Do(httpReq, &resp); err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
 // ListMessages fetches messages for a specific conversation.
 // GET /v1/inbox/conversations/{conversationId}/messages
 func (c *Client) ListMessages(conversationID string, limit int, cursor string) (*ListMessagesResponse, error) {

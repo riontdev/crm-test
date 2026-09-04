@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useTemplatesStore } from '@/stores/templates'
-import type { Template } from '@/lib/api'
+import { api, type Template } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -221,6 +221,123 @@ const inputClasses =
 
 const labelClasses =
   'block text-xs font-semibold uppercase tracking-[0.05em] text-slate-500 dark:text-slate-400'
+
+// ---------- Plantillas de WhatsApp (Meta) ----------
+interface WhatsAppTemplate {
+  name: string
+  language: string
+  status: string
+  category: string
+}
+
+const waAccountId = ref('6a8a850c77555aae018c5c27')
+const waTemplates = ref<WhatsAppTemplate[]>([])
+const waLoading = ref(false)
+const waError = ref<string | null>(null)
+const waLoaded = ref(false)
+
+const waStatusVariant: Record<string, 'default' | 'warning' | 'success' | 'info'> = {
+  APPROVED: 'success',
+  PENDING: 'warning',
+  IN_APPEAL: 'warning',
+  REJECTED: 'default',
+  PAUSED: 'info',
+  DISABLED: 'info',
+}
+
+function waType(t: WhatsAppTemplate) {
+  return waStatusVariant[t.status] ?? 'default'
+}
+
+async function loadWhatsAppTemplates(force = false) {
+  if (waLoading.value) return
+  if (waLoaded.value && !force) return
+  waError.value = null
+  waLoading.value = true
+  try {
+    const res = await api.whatsappTemplates(waAccountId.value.trim())
+    waTemplates.value = res.templates
+    waLoaded.value = true
+  } catch (e: any) {
+    waError.value = e.message
+  } finally {
+    waLoading.value = false
+  }
+}
+
+// Modal crear plantilla WhatsApp
+const waModalOpen = ref(false)
+const waForm = reactive({ name: '', category: 'utility', language: 'es', content: '' })
+const waFormError = ref<string | null>(null)
+const waSaving = ref(false)
+
+const WA_CATEGORIES = [
+  { value: 'utility', label: 'Utilidad' },
+  { value: 'marketing', label: 'Marketing' },
+  { value: 'authentication', label: 'Autenticación' },
+]
+
+const WA_LANGUAGES = [
+  { value: 'es', label: 'Español' },
+  { value: 'es_MX', label: 'Español (México)' },
+  { value: 'es_AR', label: 'Español (Argentina)' },
+  { value: 'en', label: 'Inglés' },
+  { value: 'en_US', label: 'Inglés (EE. UU.)' },
+  { value: 'pt', label: 'Portugués' },
+  { value: 'pt_BR', label: 'Portugués (Brasil)' },
+]
+
+function openWaCreate() {
+  waForm.name = ''
+  waForm.category = 'utility'
+  waForm.language = 'es'
+  waForm.content = ''
+  waFormError.value = null
+  waModalOpen.value = true
+}
+
+function closeWaModal() {
+  if (waSaving.value) return
+  waModalOpen.value = false
+}
+
+const waDetectedVars = computed(() => extractVars(waForm.content))
+
+async function handleWaSubmit() {
+  if (waSaving.value) return
+  waFormError.value = null
+  const name = waForm.name.trim()
+  if (!name) {
+    waFormError.value = 'El nombre es obligatorio (minúsculas, sin espacios)'
+    return
+  }
+  if (!/^[a-z][a-z0-9_]*$/.test(name)) {
+    waFormError.value = 'El nombre debe empezar con una letra y usar solo minúsculas, números y _'
+    return
+  }
+  if (!waForm.content.trim()) {
+    waFormError.value = 'El contenido es obligatorio'
+    return
+  }
+  waSaving.value = true
+  try {
+    await api.createWhatsAppTemplate({
+      account_id: waAccountId.value.trim(),
+      name,
+      category: waForm.category,
+      language: waForm.language,
+      content: waForm.content,
+    })
+    waModalOpen.value = false
+    waTemplates.value = []
+    waLoaded.value = false
+    void loadWhatsAppTemplates(true)
+  } catch (e: any) {
+    waFormError.value = e.message
+  } finally {
+    waSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -241,6 +358,75 @@ const labelClasses =
           Nueva plantilla
         </Button>
       </header>
+
+      <!-- Header WhatsApp -->
+      <header class="mt-6 flex flex-wrap items-start gap-4 border-t border-slate-200 pt-6 dark:border-slate-800">
+        <div class="min-w-0">
+          <h2 class="text-lg font-semibold tracking-[-0.01em] text-slate-900 dark:text-white">
+            Plantillas de WhatsApp (Meta)
+          </h2>
+          <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Son las que usa WhatsApp para responder fuera de la ventana de 24h. Se revisan en Meta
+            (hasta 24h). Solo las aprobadas se pueden enviar.
+          </p>
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+          <label :class="labelClasses" for="wa-account" class="!mt-0">
+            Account ID
+          </label>
+          <input
+            id="wa-account"
+            v-model="waAccountId"
+            type="text"
+            :disabled="waLoading"
+            class="w-56 rounded-lg border border-slate-300 bg-slate-50 px-3 py-1.5 text-sm text-slate-800 outline-none focus:border-sky-400 focus:ring-2 focus:ring-sky-400/40 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+          />
+          <Button size="sm" variant="ghost" @click="loadWhatsAppTemplates(true)">
+            <span class="material-symbols-outlined text-base" aria-hidden="true">refresh</span>
+          </Button>
+          <Button size="sm" @click="openWaCreate">
+            <span class="material-symbols-outlined text-base" aria-hidden="true">add</span>
+            Crear plantilla WA
+          </Button>
+        </div>
+      </header>
+
+      <!-- Contenido WhatsApp -->
+      <section class="mt-4">
+        <Button v-if="!waLoaded && !waLoading" size="sm" variant="ghost" @click="loadWhatsAppTemplates()">
+          <span class="material-symbols-outlined text-base" aria-hidden="true">download</span>
+          Cargar plantillas
+        </Button>
+
+        <p v-if="waLoading" class="text-sm text-slate-400 dark:text-slate-500">Cargando plantillas de WhatsApp…</p>
+
+        <div v-else-if="waError" class="text-sm text-red-500" role="alert">
+          {{ waError }}
+          <button class="ml-2 underline" @click="loadWhatsAppTemplates(true)">Reintentar</button>
+        </div>
+
+        <div v-else-if="waLoaded && waTemplates.length === 0"
+          class="rounded-2xl border border-dashed border-slate-300 p-5 text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+          Todavía no hay plantillas de WhatsApp aprobadas. Creá una para poder responder cuando la
+          ventana de 24h esté vencida.
+        </div>
+
+        <div v-else-if="waLoaded" class="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <article
+            v-for="t in waTemplates"
+            :key="t.name + t.language"
+            class="flex items-center gap-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-[#101828]"
+          >
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold text-slate-900 dark:text-white">{{ t.name }}</p>
+              <p class="text-[11px] text-slate-400 dark:text-slate-500">
+                {{ t.language }} · {{ t.category.toLowerCase() }}
+              </p>
+            </div>
+            <Badge :variant="waType(t)" class="ml-auto shrink-0">{{ t.status }}</Badge>
+          </article>
+        </div>
+      </section>
 
       <!-- Toolbar -->
       <div class="mt-4 flex flex-wrap items-center gap-2">
@@ -486,5 +672,103 @@ const labelClasses =
       @confirm="handleDelete"
       @cancel="templateToDelete = null"
     />
+
+    <!-- Modal crear plantilla WhatsApp -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition duration-200 ease-out"
+        enter-from-class="opacity-0"
+        leave-active-class="transition duration-150 ease-in"
+        leave-to-class="opacity-0"
+      >
+        <div
+          v-if="waModalOpen"
+          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Crear plantilla de WhatsApp"
+          @click.self="closeWaModal"
+        >
+          <div
+            class="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-6 shadow-xl dark:border-slate-700 dark:bg-[#101828]"
+          >
+            <h2 class="text-lg font-semibold text-slate-900 dark:text-slate-100">
+              Crear plantilla de WhatsApp
+            </h2>
+            <p class="mt-1 text-xs text-slate-400 dark:text-slate-500">
+              Se enviará a Meta para revisión. Puede tardar hasta 24h en aprobarse.
+            </p>
+
+            <form class="mt-5 space-y-4" @submit.prevent="handleWaSubmit">
+              <div>
+                <label for="wa-name" :class="labelClasses">Nombre</label>
+                <input
+                  id="wa-name"
+                  v-model="waForm.name"
+                  type="text"
+                  autocomplete="off"
+                  placeholder="saludo_reinicio"
+                  :class="inputClasses"
+                />
+                <p class="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                  Minúsculas, números y _ (sin espacios). Ej: saludo_reinicio
+                </p>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label for="wa-category" :class="labelClasses">Categoría</label>
+                  <select id="wa-category" v-model="waForm.category" :class="inputClasses">
+                    <option v-for="cat in WA_CATEGORIES" :key="cat.value" :value="cat.value">
+                      {{ cat.label }}
+                    </option>
+                  </select>
+                </div>
+                <div>
+                  <label for="wa-language" :class="labelClasses">Idioma</label>
+                  <select id="wa-language" v-model="waForm.language" :class="inputClasses">
+                    <option v-for="l in WA_LANGUAGES" :key="l.value" :value="l.value">
+                      {{ l.label }}
+                    </option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label for="wa-content" :class="labelClasses">Contenido</label>
+                <textarea
+                  id="wa-content"
+                  v-model="waForm.content"
+                  rows="5"
+                  placeholder="¡Hola {{1}}! Queríamos retomar nuestra charla..."
+                  :class="inputClasses"
+                />
+                <p v-pre class="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+                  Usá {{1}}, {{2}}... para variables que completarás al enviar
+                </p>
+                <div
+                  v-if="waDetectedVars.length > 0"
+                  class="mt-2 flex flex-wrap gap-1.5"
+                >
+                  <span
+                    v-for="v in waDetectedVars"
+                    :key="v"
+                    class="rounded bg-sky-500/15 px-1 font-mono text-[10px] text-sky-700 dark:text-sky-400"
+                    >{{ v }}</span
+                  >
+                </div>
+              </div>
+
+              <p v-if="waFormError" class="text-xs text-red-500" role="alert">{{ waFormError }}</p>
+
+              <div class="flex justify-end gap-2 pt-2">
+                <Button variant="ghost" @click="closeWaModal">Cancelar</Button>
+                <Button type="submit" :loading="waSaving">Enviar a revisión</Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>

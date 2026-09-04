@@ -24,7 +24,7 @@ import (
 )
 
 // appVersion identifies the deployed build; bump to force/verify deploys.
-const appVersion = "1.3.0"
+const appVersion = "1.4.0"
 
 func main() {
 	cfg := config.Load()
@@ -208,6 +208,7 @@ func main() {
 		inbox.GET("/search", inboxHandler.Search)
 		whatsapp := protected.Group("/whatsapp")
 		whatsapp.GET("/templates", sendHandler.ListWhatsAppTemplates)
+		whatsapp.POST("/templates", sendHandler.CreateWhatsAppTemplate)
 	}
 
 	// Agent config API

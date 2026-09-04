@@ -334,4 +334,24 @@ export const api = {
   channelsStatus() {
     return request<{ channels: ChannelStatus[]; webhook_url: string }>('/channels/status')
   },
+
+  // WhatsApp WABA templates (aprobadas por Meta)
+  whatsappTemplates(accountId: string) {
+    return request<{
+      templates: { name: string; language: string; status: string; category: string }[]
+    }>(`/whatsapp/templates?account_id=${encodeURIComponent(accountId)}`)
+  },
+
+  createWhatsAppTemplate(data: {
+    account_id: string
+    name: string
+    category: string
+    language: string
+    content: string
+  }) {
+    return request<{
+      success: boolean
+      template: { id: string; name: string; status: string; category: string; language: string }
+    }>('/whatsapp/templates', { method: 'POST', body: JSON.stringify(data) })
+  },
 }

@@ -28,15 +28,15 @@ type MessageAttachment struct {
 }
 
 type MessageSender struct {
-	ID                         string           `json:"id"`
-	ContactID                  *string          `json:"contactId,omitempty"`
-	Name                       *string          `json:"name,omitempty"`
-	Username                   *string          `json:"username,omitempty"`
-	Picture                    *string          `json:"picture,omitempty"`
-	PhoneNumber                *string          `json:"phoneNumber,omitempty"`
-	BusinessScopedUserID       *string          `json:"businessScopedUserId,omitempty"`
-	ParentBusinessScopedUserID *string          `json:"parentBusinessScopedUserId,omitempty"`
-	WhatsAppUsername           *string          `json:"whatsappUsername,omitempty"`
+	ID                         string            `json:"id"`
+	ContactID                  *string           `json:"contactId,omitempty"`
+	Name                       *string           `json:"name,omitempty"`
+	Username                   *string           `json:"username,omitempty"`
+	Picture                    *string           `json:"picture,omitempty"`
+	PhoneNumber                *string           `json:"phoneNumber,omitempty"`
+	BusinessScopedUserID       *string           `json:"businessScopedUserId,omitempty"`
+	ParentBusinessScopedUserID *string           `json:"parentBusinessScopedUserId,omitempty"`
+	WhatsAppUsername           *string           `json:"whatsappUsername,omitempty"`
 	InstagramProfile           *InstagramProfile `json:"instagramProfile,omitempty"`
 }
 
@@ -81,30 +81,30 @@ type WebhookPayload struct {
 
 // WebhookMessageReceived is the full payload for message.received events.
 type WebhookMessageReceived struct {
-	ID           string                    `json:"id"`
-	Event        string                    `json:"event"`
-	Message      InboxWebhookMessage       `json:"message"`
-	Conversation InboxWebhookConversation  `json:"conversation"`
-	Account      InboxWebhookAccount       `json:"account"`
-	Metadata     *WebhookMetadata          `json:"metadata,omitempty"`
-	Timestamp    time.Time                 `json:"timestamp"`
+	ID           string                   `json:"id"`
+	Event        string                   `json:"event"`
+	Message      InboxWebhookMessage      `json:"message"`
+	Conversation InboxWebhookConversation `json:"conversation"`
+	Account      InboxWebhookAccount      `json:"account"`
+	Metadata     *WebhookMetadata         `json:"metadata,omitempty"`
+	Timestamp    time.Time                `json:"timestamp"`
 }
 
 // WebhookMetadata carries platform-specific message context.
 type WebhookMetadata struct {
-	QuotedMessageID  *string                `json:"quotedMessageId,omitempty"`
-	QuickReplyPayload *string               `json:"quickReplyPayload,omitempty"`
-	PostbackPayload  *string                `json:"postbackPayload,omitempty"`
-	PostbackTitle    *string                `json:"postbackTitle,omitempty"`
-	CallbackData     *string                `json:"callbackData,omitempty"`
-	InteractiveType  *string                `json:"interactiveType,omitempty"`
-	InteractiveID    *string                `json:"interactiveId,omitempty"`
-	ButtonPayload    *string                `json:"buttonPayload,omitempty"`
-	FlowResponseJSON *string                `json:"flowResponseJson,omitempty"`
-	FlowResponseData map[string]interface{} `json:"flowResponseData,omitempty"`
-	Referral         *WebhookReferral       `json:"referral,omitempty"`
-	StoryReply       *StoryReply            `json:"storyReply,omitempty"`
-	IsStoryMention   *bool                  `json:"isStoryMention,omitempty"`
+	QuotedMessageID   *string                `json:"quotedMessageId,omitempty"`
+	QuickReplyPayload *string                `json:"quickReplyPayload,omitempty"`
+	PostbackPayload   *string                `json:"postbackPayload,omitempty"`
+	PostbackTitle     *string                `json:"postbackTitle,omitempty"`
+	CallbackData      *string                `json:"callbackData,omitempty"`
+	InteractiveType   *string                `json:"interactiveType,omitempty"`
+	InteractiveID     *string                `json:"interactiveId,omitempty"`
+	ButtonPayload     *string                `json:"buttonPayload,omitempty"`
+	FlowResponseJSON  *string                `json:"flowResponseJson,omitempty"`
+	FlowResponseData  map[string]interface{} `json:"flowResponseData,omitempty"`
+	Referral          *WebhookReferral       `json:"referral,omitempty"`
+	StoryReply        *StoryReply            `json:"storyReply,omitempty"`
+	IsStoryMention    *bool                  `json:"isStoryMention,omitempty"`
 }
 
 type WebhookReferral struct {
@@ -147,19 +147,19 @@ type ListConversationsResponse struct {
 }
 
 type ConversationData struct {
-	ID                   string            `json:"id"`
-	Platform             string            `json:"platform"`
-	AccountID            string            `json:"accountId"`
-	AccountUsername       string            `json:"accountUsername"`
-	ParticipantID        string            `json:"participantId"`
-	ParticipantName      string            `json:"participantName"`
-	ParticipantPicture   string            `json:"participantPicture"`
-	LastMessage          string            `json:"lastMessage"`
-	UpdatedTime          time.Time         `json:"updatedTime"`
-	Status               string            `json:"status"`
-	UnreadCount          int               `json:"unreadCount"`
-	URL                  *string           `json:"url,omitempty"`
-	InstagramProfile     *InstagramProfile `json:"instagramProfile,omitempty"`
+	ID                 string            `json:"id"`
+	Platform           string            `json:"platform"`
+	AccountID          string            `json:"accountId"`
+	AccountUsername    string            `json:"accountUsername"`
+	ParticipantID      string            `json:"participantId"`
+	ParticipantName    string            `json:"participantName"`
+	ParticipantPicture string            `json:"participantPicture"`
+	LastMessage        string            `json:"lastMessage"`
+	UpdatedTime        time.Time         `json:"updatedTime"`
+	Status             string            `json:"status"`
+	UnreadCount        int               `json:"unreadCount"`
+	URL                *string           `json:"url,omitempty"`
+	InstagramProfile   *InstagramProfile `json:"instagramProfile,omitempty"`
 }
 
 type Pagination struct {
@@ -168,10 +168,10 @@ type Pagination struct {
 }
 
 type AccountsMeta struct {
-	AccountsQueried int            `json:"accountsQueried"`
-	AccountsFailed  int            `json:"accountsFailed"`
+	AccountsQueried int             `json:"accountsQueried"`
+	AccountsFailed  int             `json:"accountsFailed"`
 	FailedAccounts  []FailedAccount `json:"failedAccounts,omitempty"`
-	LastUpdated     time.Time      `json:"lastUpdated"`
+	LastUpdated     time.Time       `json:"lastUpdated"`
 }
 
 type FailedAccount struct {
@@ -225,8 +225,8 @@ type ActionButton struct {
 type SendMessageResponse struct {
 	Success bool `json:"success"`
 	Data    struct {
-		MessageID      string             `json:"messageId"`
-		ConversationID string             `json:"conversationId"`
+		MessageID      string              `json:"messageId"`
+		ConversationID string              `json:"conversationId"`
 		Attachments    []MessageAttachment `json:"attachments"`
 	} `json:"data"`
 }
@@ -253,7 +253,7 @@ type SendConversationTemplateResponse struct {
 
 // WhatsAppTemplatesResponse is the response from GET /v1/whatsapp/templates.
 type WhatsAppTemplatesResponse struct {
-	Success   bool          `json:"success"`
+	Success   bool               `json:"success"`
 	Templates []WhatsAppTemplate `json:"templates"`
 }
 
@@ -264,6 +264,36 @@ type WhatsAppTemplate struct {
 	Status   string `json:"status"`   // APPROVED | PENDING | REJECTED
 	Category string `json:"category"` // AUTHENTICATION | MARKETING | UTILITY
 	Language string `json:"language"`
+}
+
+// CreateWhatsAppTemplateRequest is the body for POST /v1/whatsapp/templates.
+type CreateWhatsAppTemplateRequest struct {
+	AccountID           string                      `json:"accountId"`
+	Name                string                      `json:"name"`
+	Category            string                      `json:"category"`                   // AUTHENTICATION | MARKETING | UTILITY
+	Language            string                      `json:"language"`                   // e.g. en_US
+	ParameterFormat     string                      `json:"parameter_format,omitempty"` // POSITIONAL | NAMED
+	Components          []WhatsAppTemplateComponent `json:"components,omitempty"`
+	LibraryTemplateName string                      `json:"library_template_name,omitempty"`
+}
+
+// WhatsAppTemplateComponent is a single component (BODY/HEADER/FOOTER/BUTTONS)
+// of a WhatsApp template.
+type WhatsAppTemplateComponent struct {
+	Type string `json:"type"` // BODY | HEADER | FOOTER | BUTTONS
+	Text string `json:"text,omitempty"`
+}
+
+// CreateWhatsAppTemplateResponse is the response from POST /v1/whatsapp/templates.
+type CreateWhatsAppTemplateResponse struct {
+	Success  bool `json:"success"`
+	Template struct {
+		ID       string `json:"id"`
+		Name     string `json:"name"`
+		Status   string `json:"status"` // APPROVED (library) | PENDING (custom)
+		Category string `json:"category"`
+		Language string `json:"language"`
+	} `json:"template"`
 }
 
 // ListMessagesResponse is the response from GET /v1/inbox/conversations/{id}/messages.
