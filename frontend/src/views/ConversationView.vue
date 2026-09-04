@@ -36,6 +36,16 @@ const contactName = computed(
 )
 const accountId = computed(() => store.conversation?.zernio_account_id || '')
 
+// Ventana de 24h de WhatsApp: si el canal es whatsapp y el último mensaje
+// entrante es más viejo que 24h (o no existe), WhatsApp rechaza mensajes libres.
+const WA_WINDOW_MS = 24 * 60 * 60 * 1000
+const waWindowClosed = computed(() => {
+  const conv = store.conversation
+  if (!conv || conv.channel !== 'whatsapp') return false
+  if (!conv.last_inbound_at) return true
+  return Date.now() - new Date(conv.last_inbound_at).getTime() > WA_WINDOW_MS
+})
+
 interface MessageGroup {
   label: string
   items: Message[]
@@ -273,6 +283,19 @@ async function handleSend({ text, file }: { text: string; file: File | null }) {
       <div class="shrink-0">
         <div class="hidden px-4 pt-2 sm:block">
           <QuickActions @select="onQuickAction" />
+        </div>
+
+        <!-- Aviso ventana de 24h WhatsApp vencida -->
+        <div
+          v-if="waWindowClosed && !store.loading"
+          class="mx-4 mb-1 flex items-center gap-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:bg-amber-900/20 dark:text-amber-300"
+          role="status"
+        >
+          <span class="material-symbols-outlined text-base" aria-hidden="true">info</span>
+          <span>
+            La ventana de 24h de WhatsApp está vencida. Solo podés responder con una plantilla
+            aprobada.
+          </span>
         </div>
 
         <!-- Banner error envío -->
