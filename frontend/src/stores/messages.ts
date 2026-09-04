@@ -39,6 +39,11 @@ export const useMessagesStore = defineStore('messages', () => {
     eventSource.addEventListener('message.received', (e) => {
       const data = JSON.parse(e.data)
       if (data.conversation_id !== conversationId) return
+      // Ignorar eventos sin contenido real (webhooks con texto nulo / sin adjuntos)
+      // evitan insertar burbujas vacías que parecen respuestas del cliente.
+      const hasText = typeof data.text === 'string' && data.text.trim().length > 0
+      const hasAttachments = Array.isArray(data.attachments) && data.attachments.length > 0
+      if (!hasText && !hasAttachments) return
       // Insertar el mensaje entrante localmente en tiempo real, sin recargar
       // toda la conversación. Dedup por external_id (o id local si no viene).
       const extId = data.external_id || `recv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
