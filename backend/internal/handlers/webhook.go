@@ -162,7 +162,8 @@ func (h *WebhookHandler) handleMessageReceived(ctx context.Context, rawBody []by
 		SentAt:            &msg.SentAt,
 	}
 
-	if _, err := h.messages.InsertMessage(ctx, newMsg); err != nil {
+	inserted, err := h.messages.InsertMessage(ctx, newMsg)
+	if err != nil {
 		return fmt.Errorf("failed to insert message: %w", err)
 	}
 
@@ -185,13 +186,18 @@ func (h *WebhookHandler) handleMessageReceived(ctx context.Context, rawBody []by
 		h.sseHub.Broadcast(sse.Event{
 			Type: "message.received",
 			Data: map[string]interface{}{
-				"conversation_id": payload.Conversation.ID,
-				"channel":         channel,
-				"contact_name":    contactName,
-				"text":            msgText,
-				"direction":       msg.Direction,
-				"sent_at":         msg.SentAt,
-				"unread_count":    1,
+				"conversation_id":    payload.Conversation.ID,
+				"channel":            channel,
+				"contact_name":       contactName,
+				"text":               msgText,
+				"direction":          msg.Direction,
+				"sent_at":            msg.SentAt,
+				"unread_count":       1,
+				"message_id":         inserted.ID,
+				"external_id":        inserted.ExternalID,
+				"sender_type":        inserted.SenderType,
+				"attachments":        msg.Attachments,
+				"platform_message_id": inserted.PlatformMessageID,
 			},
 		})
 	}

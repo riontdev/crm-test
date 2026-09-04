@@ -228,7 +228,7 @@ export const api = {
   },
 
   sendMessage(conversationId: string, data: { message: string; account_id: string; attachment_url?: string; attachment_type?: string }) {
-    return request<{ success: boolean; message_id: string }>(`/inbox/conversations/${conversationId}/messages`, {
+    return request<{ success: boolean; message_id: string; message?: Message }>(`/inbox/conversations/${conversationId}/messages`, {
       method: 'POST',
       body: JSON.stringify(data),
     })

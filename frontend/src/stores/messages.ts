@@ -38,8 +38,35 @@ export const useMessagesStore = defineStore('messages', () => {
 
     eventSource.addEventListener('message.received', (e) => {
       const data = JSON.parse(e.data)
-      if (data.conversation_id === conversationId) {
+      if (data.conversation_id !== conversationId) return
+      // Insertar el mensaje entrante localmente en tiempo real, sin recargar
+      // toda la conversación. Dedup por external_id.
+      if (!data.external_id) {
         fetchConversation(conversationId)
+        return
+      }
+      if (messages.value.some((m) => m.external_id === data.external_id)) return
+      const msg: Message = {
+        id: data.message_id || data.external_id,
+        external_id: data.external_id,
+        direction: data.direction || 'incoming',
+        text: data.text || undefined,
+        attachments: data.attachments || [],
+        sender_type: data.sender_type || 'contact',
+        status: 'sent',
+        platform_message_id: data.platform_message_id || undefined,
+        sent_at: data.sent_at,
+        created_at: data.sent_at,
+      }
+      messages.value.push(msg)
+      if (conversation.value) {
+        conversation.value.last_inbound_at = data.sent_at || conversation.value.last_inbound_at
+        conversation.value.last_message = {
+          text: data.text,
+          direction: 'incoming',
+          sent_at: data.sent_at,
+        }
+        conversation.value.unread_count = (conversation.value.unread_count || 0) + 1
       }
     })
 
@@ -80,14 +107,31 @@ export const useMessagesStore = defineStore('messages', () => {
     messages.value.push(pending)
 
     try {
-      await api.sendMessage(conversationId, {
+      const res = await api.sendMessage(conversationId, {
         message: text,
         account_id: accountId,
         attachment_url: attachmentUrl,
         attachment_type: attachmentType,
       })
       lastFailed.value = null
-      await fetchConversation(conversationId)
+      // Reemplazar la burbuja local por el mensaje persistido sin recargar toda
+      // la conversación (más fluido y en tiempo real).
+      const persisted = res.message
+      const idx = messages.value.findIndex((m) => m.client_id === clientId)
+      if (persisted) {
+        const clean = { ...persisted }
+        if (idx >= 0) messages.value[idx] = clean
+        else messages.value.push(clean)
+        if (conversation.value) {
+          conversation.value.last_message = {
+            text: persisted.text,
+            direction: 'outgoing',
+            sent_at: persisted.sent_at,
+          }
+        }
+      } else if (idx >= 0) {
+        messages.value[idx].status = 'sent'
+      }
     } catch (e: any) {
       // Marcar la burbuja local como fallida y conservar el error objetivo.
       const msg = messages.value.find((m) => m.client_id === clientId)
