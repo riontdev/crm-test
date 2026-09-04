@@ -84,11 +84,16 @@ func (r *MessageRepository) ListByConversation(ctx context.Context, conversation
 		limit = 50
 	}
 
+	// ORDEN: traer los mensajes MÁS RECIENTES dentro del límite. Como la bandeja
+	// muestra el historial cronológico (viejos → nuevos), se consulta DESC (los
+	// últimos N) y luego se revierte para devolverlos de nuevo en orden ASC.
+	// Antes usaba ORDER BY created_at ASC LIMIT, que traía los N MÁS ANTIGUOS y
+	// escondía los mensajes nuevos cuando la conversación superaba el límite.
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, conversation_id, external_id, direction, text, attachments, sender_type, sender_contact_id, platform_message_id, status, metadata, sent_at, created_at
 		 FROM messages
 		 WHERE conversation_id = $1
-		 ORDER BY created_at ASC
+		 ORDER BY created_at DESC
 		 LIMIT $2 OFFSET $3`, conversationID, limit, offset,
 	)
 	if err != nil {
@@ -96,7 +101,7 @@ func (r *MessageRepository) ListByConversation(ctx context.Context, conversation
 	}
 	defer rows.Close()
 
-	var messages []Message
+	messages := make([]Message, 0, limit)
 	for rows.Next() {
 		var msg Message
 		if err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.ExternalID, &msg.Direction,
@@ -105,6 +110,11 @@ func (r *MessageRepository) ListByConversation(ctx context.Context, conversation
 			return nil, fmt.Errorf("failed to scan message: %w", err)
 		}
 		messages = append(messages, msg)
+	}
+
+	// Devuelve en orden cronológico (más antiguo primero).
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
 	}
 
 	return messages, nil
