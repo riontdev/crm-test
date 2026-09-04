@@ -186,7 +186,7 @@ func (h *WebhookHandler) handleMessageReceived(ctx context.Context, rawBody []by
 		h.sseHub.Broadcast(sse.Event{
 			Type: "message.received",
 			Data: map[string]interface{}{
-				"conversation_id":    payload.Conversation.ID,
+				"conversation_id":    conv.ID,
 				"channel":            channel,
 				"contact_name":       contactName,
 				"text":               msgText,
