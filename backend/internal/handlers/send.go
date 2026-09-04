@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
@@ -35,11 +36,48 @@ func NewSendHandler(
 
 // SendMessageRequest is the body for POST /api/inbox/conversations/:id/messages
 type SendMessageRequest struct {
-	AccountID      string  `json:"account_id"`
-	Message        string  `json:"message"`
-	AttachmentURL  *string `json:"attachment_url,omitempty"`
-	AttachmentType *string `json:"attachment_type,omitempty"`
-	ReplyTo        string  `json:"reply_to,omitempty"`
+	AccountID        string   `json:"account_id"`
+	Message          string   `json:"message"`
+	AttachmentURL    *string  `json:"attachment_url,omitempty"`
+	AttachmentType   *string  `json:"attachment_type,omitempty"`
+	ReplyTo          string   `json:"reply_to,omitempty"`
+	TemplateName     string   `json:"template_name,omitempty"`
+	TemplateLanguage string   `json:"template_language,omitempty"`
+	TemplateParams   []string `json:"template_params,omitempty"`
+}
+
+// whatsappServiceWindow is the duration a freeform WhatsApp message stays
+// allowed after the last inbound message (Meta's 24h customer-service window).
+const whatsappServiceWindow = 24 * time.Hour
+
+func windowClosed(conv *repository.Conversation) bool {
+	if conv.LastInboundAt == nil {
+		return true
+	}
+	return time.Since(*conv.LastInboundAt) > whatsappServiceWindow
+}
+
+// ListWhatsAppTemplates returns the approved WABA templates for an account.
+// GET /api/whatsapp/templates?account_id=
+func (h *SendHandler) ListWhatsAppTemplates(c echo.Context) error {
+	accountID := c.QueryParam("account_id")
+	if accountID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "account_id is required"})
+	}
+	resp, err := h.zernioClient.ListWhatsAppTemplates(accountID)
+	if err != nil {
+		return c.JSON(http.StatusBadGateway, map[string]string{"error": fmt.Sprintf("failed to list templates: %v", err)})
+	}
+	templates := make([]map[string]string, 0, len(resp.Templates))
+	for _, t := range resp.Templates {
+		templates = append(templates, map[string]string{
+			"name":     t.Name,
+			"language": t.Language,
+			"status":   t.Status,
+			"category": t.Category,
+		})
+	}
+	return c.JSON(http.StatusOK, map[string]interface{}{"templates": templates})
 }
 
 // SendMessage sends a reply to a conversation.
@@ -59,8 +97,9 @@ func (h *SendHandler) SendMessage(c echo.Context) error {
 	if req.AccountID == "" {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "account_id is required"})
 	}
-	if req.Message == "" && req.AttachmentURL == nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "message or attachment is required"})
+	isTemplate := req.TemplateName != ""
+	if !isTemplate && req.Message == "" && req.AttachmentURL == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "message, attachment o plantilla es requerido"})
 	}
 
 	// Get the conversation to find the Zernio conversation ID
@@ -69,7 +108,94 @@ func (h *SendHandler) SendMessage(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, map[string]string{"error": "conversation not found"})
 	}
 
-	// Send via Zernio API
+	// Fuera de la ventana de 24h de WhatsApp, los mensajes libres NO se entregan
+	// (dan wamid pero el destinatario nunca los recibe). Sólo se aceptan plantillas.
+	if conv.Channel == "whatsapp" && windowClosed(conv) && !isTemplate {
+		closed := ""
+		if conv.LastInboundAt != nil {
+			closed = conv.LastInboundAt.Format(time.RFC3339)
+		}
+		return c.JSON(http.StatusBadRequest, map[string]map[string]interface{}{
+			"error": {
+				"code":          "WINDOW_CLOSED",
+				"message":       "La ventana de 24h de WhatsApp está vencida. Solo podés responder con una plantilla.",
+				"lastInboundAt": closed,
+			},
+		})
+	}
+
+	if isTemplate {
+		// Enviar plantilla aprobada fuera de la ventana = POST /v1/inbox/conversations,
+		// que requiere el teléfono del destinatario como participantId. Resolvemos el
+		// teléfono desde la conversación de Zernio (su participantId es el número).
+		participantID := ""
+		if zernioConv, err := h.zernioClient.GetConversation(conv.ZernioConversationID, req.AccountID); err == nil {
+			participantID = zernioConv.ParticipantID
+		}
+		if participantID == "" {
+			if contact, err := h.contacts.GetByID(c.Request().Context(), conv.ContactID); err == nil && contact.Phone != nil {
+				participantID = *contact.Phone
+			}
+		}
+		if participantID == "" {
+			return c.JSON(http.StatusBadRequest, map[string]map[string]interface{}{
+				"error": {
+					"code":    "PHONE_REQUIRED",
+					"message": "No se pudo resolver el teléfono del contacto para enviar la plantilla.",
+				},
+			})
+		}
+		tplReq := zernio.SendConversationTemplateRequest{
+			AccountID:        req.AccountID,
+			ParticipantID:    participantID,
+			TemplateName:     req.TemplateName,
+			TemplateLanguage: req.TemplateLanguage,
+			TemplateParams:   req.TemplateParams,
+		}
+		tplResp, err := h.zernioClient.SendConversationTemplate(tplReq)
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to send template: %v", err)})
+		}
+
+		// Persistir el mensaje saliente de plantilla.
+		externalID := tplResp.Data.MessageID
+		if externalID == "" {
+			externalID = uuid.NewString()
+		}
+		text := fmt.Sprintf("[Plantilla %s]", req.TemplateName)
+		metadata, _ := json.Marshal(map[string]interface{}{
+			"template":      true,
+			"template_name": req.TemplateName,
+		})
+		newMsg := &repository.Message{
+			ConversationID:    convID,
+			ExternalID:        externalID,
+			Direction:         "outgoing",
+			Text:              &text,
+			SenderType:        "agent",
+			PlatformMessageID: &externalID,
+			Status:            "sent",
+			Metadata:          metadata,
+		}
+		savedMsg, err := h.messages.InsertMessage(c.Request().Context(), newMsg)
+		if err != nil {
+			fmt.Printf("warning: template sent but failed to persist: %v\n", err)
+			return c.JSON(http.StatusOK, map[string]interface{}{
+				"success":    true,
+				"message_id": externalID,
+				"persisted":  false,
+				"template":   true,
+			})
+		}
+		return c.JSON(http.StatusOK, map[string]interface{}{
+			"success":    true,
+			"message_id": externalID,
+			"message":    savedMsg,
+			"template":   true,
+		})
+	}
+
+	// Mensaje libre (dentro de la ventana de 24h)
 	text := req.Message
 	zernioReq := zernio.SendMessageRequest{
 		AccountID:      req.AccountID,
@@ -81,18 +207,18 @@ func (h *SendHandler) SendMessage(c echo.Context) error {
 		zernioReq.ReplyTo = &req.ReplyTo
 	}
 
-	zernioResp, err := h.zernioClient.SendMessage(conv.ZernioConversationID, zernioReq)
+	zernioRespMsg, err := h.zernioClient.SendMessage(conv.ZernioConversationID, zernioReq)
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, map[string]string{"error": fmt.Sprintf("failed to send message: %v", err)})
 	}
 
 	// Persist the outgoing message
-	attachmentsJSON, _ := json.Marshal(zernioResp.Data.Attachments)
-	platformMsgID := zernioResp.Data.MessageID
+	attachmentsJSON, _ := json.Marshal(zernioRespMsg.Data.Attachments)
+	platformMsgID := zernioRespMsg.Data.MessageID
 
 	newMsg := &repository.Message{
 		ConversationID:    convID,
-		ExternalID:        zernioResp.Data.MessageID,
+		ExternalID:        zernioRespMsg.Data.MessageID,
 		Direction:         "outgoing",
 		Text:              &text,
 		Attachments:       attachmentsJSON,
@@ -109,14 +235,14 @@ func (h *SendHandler) SendMessage(c echo.Context) error {
 		fmt.Printf("warning: message sent to Zernio but failed to persist: %v\n", err)
 		return c.JSON(http.StatusOK, map[string]interface{}{
 			"success":     true,
-			"message_id":  zernioResp.Data.MessageID,
+			"message_id":  zernioRespMsg.Data.MessageID,
 			"persisted":   false,
 		})
 	}
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"success":    true,
-		"message_id": zernioResp.Data.MessageID,
+		"message_id": zernioRespMsg.Data.MessageID,
 		"message":    savedMsg,
 	})
 }

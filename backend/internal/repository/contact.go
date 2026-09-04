@@ -119,6 +119,18 @@ func (r *ContactRepository) GetByID(ctx context.Context, id uuid.UUID) (*Contact
 	return &contact, nil
 }
 
+// EnsurePhone sets the contact phone if it is currently empty.
+func (r *ContactRepository) EnsurePhone(ctx context.Context, contactID uuid.UUID, phone string) error {
+	if phone == "" {
+		return nil
+	}
+	_, err := r.pool.Exec(ctx,
+		`UPDATE contacts SET phone = $2, updated_at = now() WHERE id = $1 AND (phone IS NULL OR phone = '')`,
+		contactID, phone,
+	)
+	return err
+}
+
 // UpdateNotes sets the notes for a contact (nil or empty clears them).
 func (r *ContactRepository) UpdateNotes(ctx context.Context, contactID uuid.UUID, notes *string) error {
 	_, err := r.pool.Exec(ctx,

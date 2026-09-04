@@ -231,6 +231,41 @@ type SendMessageResponse struct {
 	} `json:"data"`
 }
 
+// SendConversationTemplateRequest is the body for POST /v1/inbox/conversations.
+// Sends an approved WhatsApp template outside the 24h service window (re-engages
+// an existing thread or opens a new one). Contract per Zernio OpenAPI.
+type SendConversationTemplateRequest struct {
+	AccountID        string   `json:"accountId"`
+	ParticipantID    string   `json:"participantId"`
+	TemplateName     string   `json:"templateName"`
+	TemplateLanguage string   `json:"templateLanguage"`
+	TemplateParams   []string `json:"templateParams,omitempty"`
+}
+
+// SendConversationTemplateResponse is the response from POST /v1/inbox/conversations.
+type SendConversationTemplateResponse struct {
+	Success bool `json:"success"`
+	Data    struct {
+		MessageID      string `json:"messageId"`
+		ConversationID string `json:"conversationId"`
+	} `json:"data"`
+}
+
+// WhatsAppTemplatesResponse is the response from GET /v1/whatsapp/templates.
+type WhatsAppTemplatesResponse struct {
+	Success   bool          `json:"success"`
+	Templates []WhatsAppTemplate `json:"templates"`
+}
+
+// WhatsAppTemplate is a single WABA message template.
+type WhatsAppTemplate struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Status   string `json:"status"`   // APPROVED | PENDING | REJECTED
+	Category string `json:"category"` // AUTHENTICATION | MARKETING | UTILITY
+	Language string `json:"language"`
+}
+
 // ListMessagesResponse is the response from GET /v1/inbox/conversations/{id}/messages.
 type ListMessagesResponse struct {
 	Data       []InboxWebhookMessage `json:"data"`

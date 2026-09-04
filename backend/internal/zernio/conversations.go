@@ -37,11 +37,17 @@ func (c *Client) ListConversations(platform string, limit int, cursor string) (*
 
 // GetConversation fetches a single conversation by ID.
 // GET /v1/inbox/conversations/{conversationId}
-func (c *Client) GetConversation(conversationID string) (*ConversationData, error) {
+func (c *Client) GetConversation(conversationID, accountID string) (*ConversationData, error) {
 	u := fmt.Sprintf("%s/inbox/conversations/%s", c.baseURL, url.PathEscape(conversationID))
 	req, err := http.NewRequest(http.MethodGet, u, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	if accountID != "" {
+		q := req.URL.Query()
+		q.Set("accountId", accountID)
+		req.URL.RawQuery = q.Encode()
 	}
 
 	var resp struct {

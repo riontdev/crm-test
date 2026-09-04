@@ -32,6 +32,49 @@ func (c *Client) SendMessage(conversationID string, req SendMessageRequest) (*Se
 	return &resp, nil
 }
 
+// SendConversationTemplate sends an approved WhatsApp template to a participant
+// via POST /v1/inbox/conversations. Used to re-engage a contact after the 24h
+// customer-service window has closed (freeform messages are rejected by WhatsApp
+// outside the window).
+func (c *Client) SendConversationTemplate(req SendConversationTemplateRequest) (*SendConversationTemplateResponse, error) {
+	u := fmt.Sprintf("%s/inbox/conversations", c.baseURL)
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	httpReq, err := http.NewRequest(http.MethodPost, u, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+
+	var resp SendConversationTemplateResponse
+	if err := c.Do(httpReq, &resp); err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
+// ListWhatsAppTemplates lists approved WABA message templates.
+// GET /v1/whatsapp/templates?accountId=...
+func (c *Client) ListWhatsAppTemplates(accountID string) (*WhatsAppTemplatesResponse, error) {
+	u := fmt.Sprintf("%s/whatsapp/templates?accountId=%s", c.baseURL, url.QueryEscape(accountID))
+	req, err := http.NewRequest(http.MethodGet, u, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	var resp WhatsAppTemplatesResponse
+	if err := c.Do(req, &resp); err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
 // ListMessages fetches messages for a specific conversation.
 // GET /v1/inbox/conversations/{conversationId}/messages
 func (c *Client) ListMessages(conversationID string, limit int, cursor string) (*ListMessagesResponse, error) {

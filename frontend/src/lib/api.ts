@@ -150,10 +150,36 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
     if (res.status === 401 && !path.startsWith('/auth/login')) {
       window.dispatchEvent(new CustomEvent('crm:unauthorized'))
     }
-    throw new Error(error.error || 'Request failed')
+    throw ApiError.from(error, res.status)
   }
 
   return res.json()
+}
+
+export class ApiError extends Error {
+  code?: string
+  data: any
+  status?: number
+
+  constructor(message: string, code?: string, status?: number, data?: any) {
+    super(message)
+    this.name = 'ApiError'
+    this.code = code
+    this.status = status
+    this.data = data
+  }
+
+  static from(payload: any, status: number): ApiError {
+    const raw = payload?.error
+    if (raw && typeof raw === 'object') {
+      return new ApiError(raw.message || 'Solicitud inválida', raw.code, status, raw)
+    }
+    const msg =
+      typeof raw === 'string'
+        ? raw
+        : payload?.message || `Solicitud inválida (${status})`
+    return new ApiError(msg, raw?.code, status, payload)
+  }
 }
 
 export const api = {

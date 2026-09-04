@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { api, type ConversationDetail, type Message } from '@/lib/api'
+import { api, ApiError, type ConversationDetail, type Message } from '@/lib/api'
 
 export interface FailedPayload {
   text: string
@@ -14,6 +14,7 @@ export const useMessagesStore = defineStore('messages', () => {
   const loading = ref(false)
   const sending = ref(false)
   const error = ref<string | null>(null)
+  const errorCode = ref<string | null>(null)
   const lastFailed = ref<FailedPayload | null>(null)
   let eventSource: EventSource | null = null
 
@@ -70,6 +71,7 @@ export const useMessagesStore = defineStore('messages', () => {
       await fetchConversation(conversationId)
     } catch (e: any) {
       error.value = e.message || 'No se pudo enviar el mensaje'
+      errorCode.value = e instanceof ApiError ? (e.code ?? null) : null
       lastFailed.value = { text, attachmentUrl, attachmentType }
       throw e
     } finally {
@@ -90,8 +92,9 @@ export const useMessagesStore = defineStore('messages', () => {
     loading.value = false
     sending.value = false
     error.value = null
+    errorCode.value = null
     lastFailed.value = null
   }
 
-  return { conversation, messages, loading, sending, error, lastFailed, fetchConversation, subscribe, unsubscribe, sendMessage, retrySend, $reset }
+  return { conversation, messages, loading, sending, error, errorCode, lastFailed, fetchConversation, subscribe, unsubscribe, sendMessage, retrySend, $reset }
 })

@@ -278,13 +278,19 @@ async function handleSend({ text, file }: { text: string; file: File | null }) {
         <!-- Banner error envío -->
         <div
           v-if="store.error && store.lastFailed && !store.loading"
-          class="mx-4 mb-1 flex items-center justify-between rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600 dark:bg-red-900/20 dark:text-red-400"
+          :class="[
+            'mx-4 mb-1 flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs',
+            store.errorCode === 'WINDOW_CLOSED'
+              ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
+              : 'bg-red-50 text-red-600 dark:bg-red-900/20 dark:text-red-400',
+          ]"
           role="alert"
         >
-          <span>Error al enviar.</span>
+          <span>{{ store.error }}</span>
           <button
+            v-if="store.errorCode !== 'WINDOW_CLOSED'"
             type="button"
-            class="font-medium underline hover:no-underline"
+            class="shrink-0 font-medium underline hover:no-underline"
             @click="store.retrySend(conversationId, accountId)"
           >
             Reintentar

@@ -123,6 +123,14 @@ func (h *WebhookHandler) handleMessageReceived(ctx context.Context, rawBody []by
 		return fmt.Errorf("failed to find/create contact: %w", err)
 	}
 
+	// Guardar el teléfono de WhatsApp del remitente (necesario para re-enganchar
+	// con plantillas fuera de la ventana de 24h).
+	if channel == "whatsapp" && msg.Sender.PhoneNumber != nil {
+		if err := h.contacts.EnsurePhone(ctx, contact.ID, *msg.Sender.PhoneNumber); err != nil {
+			fmt.Printf("warning: failed to store contact phone: %v\n", err)
+		}
+	}
+
 	_, err = h.identities.FindOrCreate(ctx, contact.ID, channel, "zernio", externalID,
 		msg.Sender.Username, msg.Sender.Name, msg.Sender.Picture)
 	if err != nil {

@@ -206,6 +206,8 @@ func main() {
 		inbox.PATCH("/contacts/:id", inboxHandler.UpdateContactNotes)
 		inbox.GET("/unread", inboxHandler.UnreadFeed)
 		inbox.GET("/search", inboxHandler.Search)
+		whatsapp := protected.Group("/whatsapp")
+		whatsapp.GET("/templates", sendHandler.ListWhatsAppTemplates)
 	}
 
 	// Agent config API
