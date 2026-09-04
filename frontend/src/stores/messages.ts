@@ -39,37 +39,15 @@ export const useMessagesStore = defineStore('messages', () => {
     eventSource.addEventListener('message.received', (e) => {
       const data = JSON.parse(e.data)
       if (data.conversation_id !== conversationId) return
-      // Ignorar eventos sin contenido real (webhooks con texto nulo / sin adjuntos)
-      // evitan insertar burbujas vacías que parecen respuestas del cliente.
+      // Ignorar eventos sin contenido real (webhooks con texto nulo / sin
+      // adjuntos) para no insertar burbujas vacías.
       const hasText = typeof data.text === 'string' && data.text.trim().length > 0
       const hasAttachments = Array.isArray(data.attachments) && data.attachments.length > 0
       if (!hasText && !hasAttachments) return
-      // Insertar el mensaje entrante localmente en tiempo real, sin recargar
-      // toda la conversación. Dedup por external_id (o id local si no viene).
-      const extId = data.external_id || `recv-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
-      if (messages.value.some((m) => m.external_id === extId)) return
-      const msg: Message = {
-        id: data.message_id || extId,
-        external_id: extId,
-        direction: data.direction || 'incoming',
-        text: data.text || undefined,
-        attachments: data.attachments || [],
-        sender_type: data.sender_type || 'contact',
-        status: 'sent',
-        platform_message_id: data.platform_message_id || undefined,
-        sent_at: data.sent_at,
-        created_at: data.sent_at,
-      }
-      messages.value.push(msg)
-      if (conversation.value) {
-        conversation.value.last_inbound_at = data.sent_at || conversation.value.last_inbound_at
-        conversation.value.last_message = {
-          text: data.text,
-          direction: 'incoming',
-          sent_at: data.sent_at,
-        }
-        conversation.value.unread_count = (conversation.value.unread_count || 0) + 1
-      }
+      // Obtener el mensaje real desde la DB: el texto/adjuntos completos solo
+      // están ahí, no en el evento SSE (que a veces llega sin texto). Como la
+      // lista de mensajes nunca se desmonta, el fetch no provoca parpadeo.
+      fetchConversation(conversationId)
     })
 
     eventSource.onerror = () => {
@@ -121,18 +99,25 @@ export const useMessagesStore = defineStore('messages', () => {
       const persisted = res.message
       const idx = messages.value.findIndex((m) => m.client_id === clientId)
       if (persisted) {
-        const clean = { ...persisted }
+        // Nunca perder el texto del mensaje recién enviado: si el backend devuelve
+        // el texto vacío (adjuntos sin texto, template, etc.), conservar el local.
+        const clean: Message = {
+          ...persisted,
+          direction: 'outgoing',
+          text: (persisted.text && persisted.text.trim()) ? persisted.text : text,
+        }
         if (idx >= 0) messages.value[idx] = clean
         else messages.value.push(clean)
         if (conversation.value) {
           conversation.value.last_message = {
-            text: persisted.text,
+            text: clean.text,
             direction: 'outgoing',
             sent_at: persisted.sent_at,
           }
         }
       } else if (idx >= 0) {
         messages.value[idx].status = 'sent'
+        messages.value[idx].text = text
       }
     } catch (e: any) {
       // Marcar la burbuja local como fallida y conservar el error objetivo.
