@@ -11,26 +11,29 @@ import (
 )
 
 type Conversation struct {
-	ID                     uuid.UUID  `db:"id"`
-	ContactID              uuid.UUID  `db:"contact_id"`
-	Channel                string     `db:"channel"`
-	Provider               string     `db:"provider"`
-	ZernioConversationID   string     `db:"zernio_conversation_id"`
-	ZernioAccountID        *string    `db:"zernio_account_id"`
-	PlatformConversationID *string    `db:"platform_conversation_id"`
-	Status                 string     `db:"status"`
-	LastInboundAt          *time.Time `db:"last_inbound_at"`
-	UnreadCount            int        `db:"unread_count"`
+	ID                     uuid.UUID     `db:"id"`
+	ContactID              uuid.UUID     `db:"contact_id"`
+	Channel                string        `db:"channel"`
+	Provider               string        `db:"provider"`
+	ZernioConversationID   string        `db:"zernio_conversation_id"`
+	ZernioAccountID        *string       `db:"zernio_account_id"`
+	PlatformConversationID *string       `db:"platform_conversation_id"`
+	Status                 string        `db:"status"`
+	LastInboundAt          *time.Time    `db:"last_inbound_at"`
+	UnreadCount            int           `db:"unread_count"`
 	AssignedTo             uuid.NullUUID `db:"assigned_to"`
-	CreatedAt              time.Time  `db:"created_at"`
-	UpdatedAt              time.Time  `db:"updated_at"`
+	InsightEnabled         bool          `db:"insight_enabled"`
+	CreatedAt              time.Time     `db:"created_at"`
+	UpdatedAt              time.Time     `db:"updated_at"`
 }
 
 const conversationColumns = `id, contact_id, channel, provider, zernio_conversation_id, zernio_account_id,
-	platform_conversation_id, status, last_inbound_at, unread_count, assigned_to, created_at, updated_at`
+	platform_conversation_id, status, last_inbound_at, unread_count, assigned_to, insight_enabled,
+	created_at, updated_at`
 
 const conversationColumnsQualified = `c.id, c.contact_id, c.channel, c.provider, c.zernio_conversation_id, c.zernio_account_id,
-	c.platform_conversation_id, c.status, c.last_inbound_at, c.unread_count, c.assigned_to, c.created_at, c.updated_at`
+	c.platform_conversation_id, c.status, c.last_inbound_at, c.unread_count, c.assigned_to, c.insight_enabled,
+	c.created_at, c.updated_at`
 
 type scanner interface {
 	Scan(dest ...any) error
@@ -41,7 +44,7 @@ func scanConversation(s scanner) (*Conversation, error) {
 	err := s.Scan(&conv.ID, &conv.ContactID, &conv.Channel, &conv.Provider,
 		&conv.ZernioConversationID, &conv.ZernioAccountID, &conv.PlatformConversationID,
 		&conv.Status, &conv.LastInboundAt, &conv.UnreadCount, &conv.AssignedTo,
-		&conv.CreatedAt, &conv.UpdatedAt)
+		&conv.InsightEnabled, &conv.CreatedAt, &conv.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}

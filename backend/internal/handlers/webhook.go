@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
 	"github.com/riont/crm/backend/internal/repository"
@@ -18,6 +19,15 @@ import (
 // AfterMessageFunc is called after a message.received is persisted.
 type AfterMessageFunc func(ctx context.Context, conversationID, channel, contactName, messageText string)
 
+// AfterPersistFunc recibe el mensaje YA persistido, con su id de base de
+// datos y sus adjuntos. Es lo que necesita el analizador de pedidos: para
+// encolar y para trazar cada analisis contra un mensaje concreto.
+//
+// Los adjuntos van como json crudo a proposito. El webhook no debe interpretarlos
+// (regla dura 2: persistir rapido, pensar despues), y el paquete que SI los
+// interpreta es el unico que debe conocer su formato.
+type AfterPersistFunc func(ctx context.Context, messageID, conversationID uuid.UUID, channel, messageText string, attachments json.RawMessage)
+
 type WebhookHandler struct {
 	webhookEvents *repository.WebhookEventRepository
 	contacts      *repository.ContactRepository
@@ -27,6 +37,7 @@ type WebhookHandler struct {
 	zernioClient  *zernio.Client
 	webhookSecret string
 	afterMessage  AfterMessageFunc
+	afterPersist  AfterPersistFunc
 	sseHub        *sse.Hub
 }
 
@@ -57,6 +68,18 @@ func (h *WebhookHandler) SetAfterMessage(fn AfterMessageFunc) {
 	h.afterMessage = fn
 }
 
+// SetAfterPersist registra el hook que encola el analisis de pedidos.
+//
+// Se separa de SetAfterMessage a proposito: el agente que RESPONDE y el
+// analizador que LEE son caminos distintos con contratos distintos. Encadenarlos
+// haria que un fallo del analizador pudiera arrastrar al agente.
+//
+// El callback corre en su propia goroutine: cualquier cosa lenta que cuelgue
+// aca se come los 5 segundos del webhook.
+func (h *WebhookHandler) SetAfterPersist(fn AfterPersistFunc) {
+	h.afterPersist = fn
+}
+
 func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 	rawBody, err := io.ReadAll(c.Request().Body)
 	if err != nil {
@@ -74,6 +97,13 @@ func (h *WebhookHandler) HandleWebhook(c echo.Context) error {
 	var envelope zernio.WebhookPayload
 	if err := json.Unmarshal(rawBody, &envelope); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+	}
+
+	// Sin id no hay forma de hacer idempotencia. Si se tratara de reclamar con
+	// id vacio, el primer evento sin id se guardaria y todos los siguientes
+	// darian conflicto y se perderian en silencio. Es peor que rechazar.
+	if envelope.ID == "" {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "evento sin id"})
 	}
 
 	claimed, err := h.webhookEvents.ClaimEvent(c.Request().Context(), envelope.ID, envelope.Event, rawBody)
@@ -186,20 +216,33 @@ func (h *WebhookHandler) handleMessageReceived(ctx context.Context, rawBody []by
 		h.sseHub.Broadcast(sse.Event{
 			Type: "message.received",
 			Data: map[string]interface{}{
-				"conversation_id":    conv.ID,
-				"channel":            channel,
-				"contact_name":       contactName,
-				"text":               msgText,
-				"direction":          msg.Direction,
-				"sent_at":            msg.SentAt,
-				"unread_count":       1,
-				"message_id":         inserted.ID,
-				"external_id":        inserted.ExternalID,
-				"sender_type":        inserted.SenderType,
-				"attachments":        msg.Attachments,
+				"conversation_id":     conv.ID,
+				"channel":             channel,
+				"contact_name":        contactName,
+				"text":                msgText,
+				"direction":           msg.Direction,
+				"sent_at":             msg.SentAt,
+				"unread_count":        1,
+				"message_id":          inserted.ID,
+				"external_id":         inserted.ExternalID,
+				"sender_type":         inserted.SenderType,
+				"attachments":         msg.Attachments,
 				"platform_message_id": inserted.PlatformMessageID,
 			},
 		})
+	}
+
+	// Encolar el analisis de pedidos. Va antes del hook del agente y en su
+	// propia goroutine: el unico trabajoallowed de este hook es dejar el id
+	// del mensaje en una cola, que es instantaneo.
+	if h.afterPersist != nil {
+		msgText := ""
+		if msg.Text != nil {
+			msgText = *msg.Text
+		}
+		payload := attachmentsJSON
+		msgID, convID, ch := inserted.ID, conv.ID, channel
+		go h.afterPersist(ctx, msgID, convID, ch, msgText, payload)
 	}
 
 	// Invoke after-message hook (agent, notifications, etc.)
@@ -257,10 +300,10 @@ func (h *WebhookHandler) handleConversationStarted(ctx context.Context, rawBody 
 
 func (h *WebhookHandler) handleMessageStatus(ctx context.Context, rawBody []byte, eventType string) error {
 	var payload struct {
-		ID        string                    `json:"id"`
-		Event     string                    `json:"event"`
-		Message   zernio.InboxWebhookMessage `json:"message"`
-		StatusAt  time.Time                 `json:"statusAt"`
+		ID       string                     `json:"id"`
+		Event    string                     `json:"event"`
+		Message  zernio.InboxWebhookMessage `json:"message"`
+		StatusAt time.Time                  `json:"statusAt"`
 	}
 
 	if err := json.Unmarshal(rawBody, &payload); err != nil {

@@ -36,6 +36,13 @@ export interface Conversation {
   updated_at: string
   contact?: Contact
   assigned_to?: Assignee | null
+  /** Interruptor por hilo del análisis de pedidos. */
+  insight_enabled: boolean
+  /** Relleno por el backend cuando el hilo ya tiene pedido consolidado. */
+  order_intent?: InsightIntent
+  order_needs_review?: boolean
+  /** Hay un pedido del cliente mas nuevo que el vigente: la IA no lo pudo consolidar. */
+  order_pending?: boolean
   last_message?: {
     text?: string
     direction: string
@@ -138,6 +145,156 @@ export interface ReportsData {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Análisis de pedidos (IA local) + notas de voz
+// ---------------------------------------------------------------------------
+
+export type InsightIntent = 'pedido' | 'info' | 'reclamo' | 'otro'
+export type OrderStatus = 'nuevo' | 'confirmado' | 'entregado' | 'descartado'
+/**
+ * Como hay que leer `cantidades`: 'delta' suma al pedido, 'total' lo reemplaza.
+ * null = no se sabe, y el backend no toca el pedido en ese caso.
+ */
+export type TipoCantidad = 'delta' | 'total' | null
+
+export type AnalysisStatus = 'pending' | 'processing' | 'ok' | 'error' | 'skipped'
+
+/** Análisis de UN mensaje. Es lo que se pinta debajo de la burbuja. */
+export interface MessageAnalysis {
+  id: string
+  message_id: string
+  conversation_id: string
+  /** 'message' = analisis de un mensaje, 'conversation' = resumen del hilo. */
+  scope?: string
+  intent?: InsightIntent | null
+  resumen?: string | null
+  productos: string[]
+  cantidades: number[]
+  tipo_cantidad?: TipoCantidad
+  detalles: Record<string, string>
+  confianza?: number | null
+  needs_review: boolean
+  asr_text?: string | null
+  asr_ms?: number | null
+  asr_model?: string | null
+  model?: string | null
+  latency_ms?: number | null
+  status: AnalysisStatus
+  error?: string | null
+  skip_reason?: string | null
+  created_at: string
+}
+
+/** Pedido consolidado de un hilo. Es lo que se edita a mano. */
+export interface Order {
+  conversation_id: string
+  intent?: InsightIntent | null
+  resumen?: string | null
+  productos: string[]
+  cantidades: number[]
+  detalles: Record<string, string>
+  confianza?: number | null
+  needs_review: boolean
+  source_message_id?: string | null
+  model?: string | null
+  edited: boolean
+  id: string
+  status: OrderStatus
+  contact_id: string
+  contact_name?: string | null
+  contact_avatar?: string | null
+  channel: string
+  /** El cliente pidio algo que todavia no se consolido en este pedido. */
+  pending: boolean
+  unread_count: number
+  last_inbound_at?: string | null
+  created_at: string
+  updated_at: string
+  /**
+   * Historial de revisiones. El pedido de un hilo es una cadena: la vigente
+   * (is_current) es la que ve el operador, las anteriores quedan para
+   * consultar. Ver POST /api/orders/:id/accept-pending.
+   */
+  revision: number
+  is_current: boolean
+  superseded_at?: string | null
+  superseded_by?: string | null
+}
+
+/** Pedido sin datos de contacto: la versión que devuelve el PATCH. */
+export interface OrderDraft {
+  conversation_id: string
+  intent?: InsightIntent | null
+  resumen?: string | null
+  productos: string[]
+  cantidades: number[]
+  detalles: Record<string, string>
+  confianza?: number | null
+  needs_review: boolean
+  edited: boolean
+}
+
+export interface InsightChannelConfig {
+  channel: string
+  enabled: boolean
+  asr_enabled: boolean
+  model: string
+  system_prompt?: string | null
+  temperature: number
+  context_messages: number
+  updated_at: string
+}
+
+export interface InsightStatus {
+  enabled: boolean
+  master_enabled: boolean
+  asr_enabled: boolean
+  model: string
+  model_ready: boolean
+  model_error?: string
+  asr_model: string
+  channels: InsightChannelConfig[]
+  counts: {
+    total: number
+    pending: number
+    processing: number
+    ok: number
+    error: number
+    skipped: number
+    needs_review: number
+  }
+  queues: { text: number; audio: number }
+  recent_errors: MessageAnalysis[]
+}
+
+export interface ConversationInsight {
+  order: Order | null
+  analyses: MessageAnalysis[]
+  /** Historial del pedido, de la revision mas nueva a la mas vieja. Solo si hay mas de una. */
+  revisions?: Order[]
+  /** Analysis "pedido" que todavia no llego al pedido vigente. El banner de la tarjeta. */
+  pending: MessageAnalysis | null
+  enabled: boolean
+  disabled_by?: string
+}
+
+export interface CatalogItem {
+  id: string
+  name: string
+  category: string
+  aliases: string[]
+  active: boolean
+  sort_order: number
+  created_at: string
+  updated_at: string
+}
+
+export interface BackfillResult {
+  encontrados: number
+  encolados: number
+  omitidos: number
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     headers: {
@@ -220,7 +377,7 @@ export const api = {
     return request<ConversationDetail>(`/inbox/conversations/${id}`)
   },
 
-  updateConversation(id: string, data: { status?: string; assigned_to?: string | null }) {
+  updateConversation(id: string, data: { status?: string; assigned_to?: string | null; insight_enabled?: boolean }) {
     return request<{ id: string; status: string; assigned_to: Assignee | null }>(`/inbox/conversations/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),
@@ -335,6 +492,121 @@ export const api = {
   // Channels
   channelsStatus() {
     return request<{ channels: ChannelStatus[]; webhook_url: string }>('/channels/status')
+  },
+
+  // Análisis de pedidos (IA local)
+  insightStatus() {
+    return request<InsightStatus>('/insights/status')
+  },
+
+  conversationInsight(conversationId: string) {
+    return request<ConversationInsight>(`/insights/conversation/${conversationId}`)
+  },
+
+  messageAnalysis(messageId: string) {
+    return request<MessageAnalysis | null>(`/insights/messages/${messageId}`)
+  },
+
+  /** El cuerpo es { enabled }, NO { value }. */
+  setInsightMaster(enabled: boolean) {
+    return request<{ key: string; enabled: boolean }>('/insights/settings/insight.master_enabled', {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    })
+  },
+
+  setInsightASR(enabled: boolean) {
+    return request<{ key: string; enabled: boolean }>('/insights/settings/insight.asr_enabled', {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    })
+  },
+
+  updateInsightChannel(channel: string, data: Partial<InsightChannelConfig>) {
+    return request<InsightChannelConfig>(`/insights/config/${channel}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
+  backfill(payload: { conversation_id?: string; limit?: number; force?: boolean } = {}) {
+    return request<BackfillResult>('/insights/backfill', {
+      method: 'POST',
+      body: JSON.stringify({ limit: 200, force: true, ...payload }),
+    })
+  },
+
+  // Pedidos
+  listOrders(params: { status?: string; intent?: string; search?: string; limit?: number; offset?: number } = {}) {
+    const query = new URLSearchParams()
+    if (params.status) query.set('status', params.status)
+    if (params.intent) query.set('intent', params.intent)
+    if (params.search) query.set('search', params.search)
+    query.set('limit', String(params.limit ?? 50))
+    query.set('offset', String(params.offset ?? 0))
+    return request<{ orders: Order[]; total: number; limit: number; offset: number }>(
+      `/orders?${query.toString()}`,
+    )
+  },
+
+  /** Editar a mano el pedido. Sella edited=true y la IA no lo vuelve a tocar. */
+  updateOrder(id: string, data: Partial<Pick<Order, 'intent' | 'resumen' | 'productos' | 'cantidades' | 'detalles' | 'status' | 'needs_review'>>) {
+    return request<Order>(`/orders/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
+  setOrderStatus(id: string, status: OrderStatus) {
+    return request<{ status: OrderStatus }>(`/orders/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    })
+  },
+
+  /**
+   * Aplicar el pedido pendiente: el pedido nuevo del cliente pasa a ser la
+   * revisión vigente y el anterior queda en el historial.
+   *
+   * POST y no PATCH porque no edita un recurso, ejecuta una transición. El
+   * backend responde 409 si no hay nada pendiente.
+   */
+  acceptPendingOrder(id: string) {
+    return request<Order>(`/orders/${id}/accept-pending`, { method: 'POST' })
+  },
+
+  /**
+   * Reabrir el pedido para que la IA vuelva a consolidar sobre ESTA revisión,
+   * sin crear una nueva. A diferencia de apply, no tira el pedido pendiente:
+   * lo re-consolida encima con la misma MergeOrder del worker.
+   */
+  reopenOrder(id: string) {
+    return request<Order>(`/orders/${id}/reopen`, { method: 'POST' })
+  },
+
+  // Catálogo
+  listCatalog(all = false) {
+    return request<{ items: CatalogItem[]; count: number }>(
+      `/catalog${all ? '?all=true' : ''}`,
+    )
+  },
+
+  createCatalogItem(data: { name: string; category?: string; aliases?: string[]; active?: boolean; sort_order?: number }) {
+    return request<CatalogItem>('/catalog', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  updateCatalogItem(id: string, data: Partial<Pick<CatalogItem, 'name' | 'category' | 'aliases' | 'active' | 'sort_order'>>) {
+    return request<CatalogItem>(`/catalog/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
+  deleteCatalogItem(id: string) {
+    return request<{ ok: boolean }>(`/catalog/${id}`, { method: 'DELETE' })
   },
 
   // WhatsApp WABA templates (aprobadas por Meta)

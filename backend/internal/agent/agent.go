@@ -10,33 +10,33 @@ import (
 
 // ConversationMessage represents a message in the conversation history for the LLM.
 type ConversationMessage struct {
-	Role      string  // "user" or "assistant"
-	Content   string
-	SentAt    string
+	Role       string // "user" or "assistant"
+	Content    string
+	SentAt     string
 	SenderName *string
 }
 
 // AgentRequest is the input to the agent.
 type AgentRequest struct {
-	Channel           string
-	ContactName       string
-	IncomingMessage   string
-	ConversationID    string
-	History           []ConversationMessage
+	Channel         string
+	ContactName     string
+	IncomingMessage string
+	ConversationID  string
+	History         []ConversationMessage
 }
 
 // AgentResponse is the output from the agent.
 type AgentResponse struct {
-	Reply   string
-	UsedModel string
+	Reply      string
+	UsedModel  string
 	TokensUsed int
 }
 
 // Agent orchestrates the LLM call for a specific channel.
 type Agent struct {
-	configRepo   *ConfigRepository
-	openrouter   *OpenRouterClient
-	pool         *pgxpool.Pool
+	configRepo *ConfigRepository
+	openrouter *OpenRouterClient
+	pool       *pgxpool.Pool
 }
 
 func NewAgent(configRepo *ConfigRepository, openrouter *OpenRouterClient, pool *pgxpool.Pool) *Agent {
@@ -45,6 +45,15 @@ func NewAgent(configRepo *ConfigRepository, openrouter *OpenRouterClient, pool *
 		openrouter: openrouter,
 		pool:       pool,
 	}
+}
+
+// IsEnabled reports whether the AI agent is enabled for a channel.
+func (a *Agent) IsEnabled(ctx context.Context, channel string) (bool, error) {
+	cfg, err := a.configRepo.GetByChannel(ctx, channel)
+	if err != nil {
+		return false, err
+	}
+	return cfg.Enabled, nil
 }
 
 // ProcessMessage handles an incoming message and generates an AI response.

@@ -3,6 +3,8 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -10,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/labstack/echo/v4"
 
+	"github.com/riont/crm/backend/internal/insight"
 	"github.com/riont/crm/backend/internal/repository"
 )
 
@@ -47,12 +50,29 @@ type ConversationResponse struct {
 	Contact              *ContactSummary  `json:"contact,omitempty"`
 	LastMessage          *MessageSummary  `json:"last_message,omitempty"`
 	AssignedTo           *AssigneeSummary `json:"assigned_to"`
+	InsightEnabled       bool             `json:"insight_enabled"`
+	OrderIntent          *string          `json:"order_intent,omitempty"`
+	// OrderPending: el cliente mando un pedido mas nuevo que el vigente. Es
+	// distinto de needs_review (que es "el pedido esta dudoso"): acá el pedido
+	// esta viejo y hay algo sin consolidar. Pasa siempre que el pedido fue
+	// editado por un humano.
+	OrderPending     bool `json:"order_pending"`
+	OrderNeedsReview bool `json:"order_needs_review"`
 }
 
 type InboxHandler struct {
 	conversations *repository.ConversationRepository
 	messages      *repository.MessageRepository
 	contacts      *repository.ContactRepository
+	// insightRepo es opcional: sin DB de analisis el inbox sigue andando, solo
+	// sin los interruptores de IA. Un puntero nil no debe romper el listado.
+	insightRepo *insight.Repository
+}
+
+// SetInsightRepo inyecta el repositorio de analisis. Lo llama main.go despues
+// de construirlo, para no cambiar la firma del constructor (que usan tests).
+func (h *InboxHandler) SetInsightRepo(r *insight.Repository) {
+	h.insightRepo = r
 }
 
 func NewInboxHandler(
@@ -91,6 +111,30 @@ func (h *InboxHandler) enrichConversationResponses(ctx context.Context, conversa
 		return nil, err
 	}
 
+	// Una sola consulta para los badges de toda la pagina: 50 queries por
+	// listado seria de las cosas que hace lento el inbox.
+	//
+	// OJO: acá van los ids de las CONVERSACIONES. Antes se pasaba el mismo
+	// `ids` que arma AssignedNames, que son ids de USUARIOS: la consulta
+	// buscaba `conversation_id = ANY(ids)` y no encontraba nunca, asi que el
+	// badge de intencion no aparecia en el inbox y no habia ningun error para
+	// enterarse.
+	convIDs := make([]uuid.UUID, 0, len(conversations))
+	for _, conv := range conversations {
+		convIDs = append(convIDs, conv.ID)
+	}
+	badges := map[uuid.UUID]insight.Badge{}
+	if h.insightRepo != nil {
+		b, err := h.insightRepo.BadgesByConversation(ctx, convIDs)
+		if err != nil {
+			// Se loguea y se sigue sin badges: la lista del inbox no puede
+			// caerse por esto. Pero queda registrado.
+			slog.Error("inbox: no se pudieron cargar los badges de pedido", "err", err)
+		} else {
+			badges = b
+		}
+	}
+
 	results := make([]ConversationResponse, 0, len(conversations))
 	for _, conv := range conversations {
 		resp := ConversationResponse{
@@ -103,6 +147,14 @@ func (h *InboxHandler) enrichConversationResponses(ctx context.Context, conversa
 			UnreadCount:          conv.UnreadCount,
 			CreatedAt:            conv.CreatedAt.Format(timeLayout),
 			UpdatedAt:            conv.UpdatedAt.Format(timeLayout),
+			InsightEnabled:       conv.InsightEnabled,
+		}
+
+		if b, ok := badges[conv.ID]; ok {
+			intent := b.Intent
+			resp.OrderIntent = &intent
+			resp.OrderNeedsReview = b.NeedsReview
+			resp.OrderPending = b.Pending
 		}
 
 		if conv.LastInboundAt != nil {
@@ -328,8 +380,11 @@ func (h *InboxHandler) GetConversation(c echo.Context) error {
 	return c.JSON(http.StatusOK, resp)
 }
 
-// UpdateConversation modifies conversation fields (status and/or assigned_to).
-// PATCH /api/inbox/conversations/:id  body: {"status"?: "active"|"archived", "assigned_to"?: "<uuid>"|null}
+// UpdateConversation modifies conversation fields (status, assigned_to and/or
+// insight_enabled).
+// PATCH /api/inbox/conversations/:id  body: {"status"?: "active"|"archived",
+//
+//	"assigned_to"?: "<uuid>"|null, "insight_enabled"?: bool}
 func (h *InboxHandler) UpdateConversation(c echo.Context) error {
 	ctx := c.Request().Context()
 	idStr := c.Param("id")
@@ -339,8 +394,9 @@ func (h *InboxHandler) UpdateConversation(c echo.Context) error {
 	}
 
 	var req struct {
-		Status     *string          `json:"status"`
-		AssignedTo *json.RawMessage `json:"assigned_to"`
+		Status         *string          `json:"status"`
+		AssignedTo     *json.RawMessage `json:"assigned_to"`
+		InsightEnabled *bool            `json:"insight_enabled"`
 	}
 	if err := c.Bind(&req); err != nil {
 		return c.JSON(http.StatusBadRequest, map[string]string{"error": "invalid request body"})
@@ -389,8 +445,24 @@ func (h *InboxHandler) UpdateConversation(c echo.Context) error {
 		}
 	}
 
-	if !statusChanged && req.AssignedTo == nil {
-		return c.JSON(http.StatusBadRequest, map[string]string{"error": "nada que actualizar: enviá status y/o assigned_to"})
+	if req.InsightEnabled != nil {
+		if h.insightRepo == nil {
+			return c.JSON(http.StatusServiceUnavailable, map[string]string{"error": "análisis no disponible"})
+		}
+		ok, err := h.insightRepo.SetConversationEnabled(ctx, id, *req.InsightEnabled)
+		if errors.Is(err, insight.ErrNotFound) {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "conversación no encontrada"})
+		}
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": "failed to update conversation"})
+		}
+		if !ok {
+			return c.JSON(http.StatusNotFound, map[string]string{"error": "conversación no encontrada"})
+		}
+	}
+
+	if !statusChanged && req.AssignedTo == nil && req.InsightEnabled == nil {
+		return c.JSON(http.StatusBadRequest, map[string]string{"error": "nada que actualizar: enviá status, assigned_to y/o insight_enabled"})
 	}
 
 	conv, err := h.conversations.GetByID(ctx, id)

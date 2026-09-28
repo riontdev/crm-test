@@ -28,7 +28,7 @@ func NewUserService(pool *pgxpool.Pool) *UserService {
 
 func (s *UserService) Authenticate(ctx context.Context, email, password string) (*User, error) {
 	var (
-		u   User
+		u    User
 		hash string
 	)
 	err := s.pool.QueryRow(ctx,
@@ -67,9 +67,9 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, name, cu
 	}
 
 	var (
-		u         User
-		nameDB    string
-		passHash  string
+		u        User
+		nameDB   string
+		passHash string
 	)
 	err := s.pool.QueryRow(ctx,
 		`SELECT id, email, name, role, password_hash FROM users WHERE id = $1`, userID,

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, watch } from 'vue'
 import { useAgentsStore } from '@/stores/agents'
+import { useInsightsStore } from '@/stores/insights'
 import type { AgentConfig } from '@/lib/api'
 import Button from '@/components/ui/Button.vue'
 import Badge from '@/components/ui/Badge.vue'
@@ -10,6 +11,7 @@ import IconButton from '@/components/ui/IconButton.vue'
 import ChannelBadge from '@/components/ui/ChannelBadge.vue'
 
 const store = useAgentsStore()
+const insights = useInsightsStore()
 
 interface AgentDraft {
   model: string
@@ -87,8 +89,14 @@ async function handleSave(agent: AgentConfig) {
   if (updated) drafts[agent.channel] = draftFrom(updated)
 }
 
-onMounted(() => {
+onMounted(async () => {
   store.fetchAgents()
+  // El status del analizador va aparte: si /insights/status falla (modulo
+  // apagado en el servidor) no debe romper la carga de los agentes de chat.
+  if (!insights.status) await insights.fetchStatus()
+  // Recién con el status resuelto se puede saber si el modulo escucha. Antes
+  // esta línea nunca corría y el panel no mostraba las colas en vivo.
+  if (insights.enabled) insights.subscribe()
 })
 </script>
 
@@ -112,6 +120,154 @@ onMounted(() => {
         Al activarlos sin la clave no contestarán.
       </p>
     </div>
+
+    <!-- Análisis de pedidos: IA local, sin respuesta automática -->
+    <section class="mb-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-[#101828]">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="text-base font-semibold text-slate-900 dark:text-slate-100">
+            Análisis de pedidos
+          </h2>
+          <p class="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+            Lee las conversaciones y arma el pedido. <strong class="font-medium">No responde nunca</strong>: solo
+            resume. Corre en esta máquina, ningún mensaje sale del servidor.
+          </p>
+        </div>
+        <label class="flex shrink-0 cursor-pointer items-center gap-2">
+          <span class="text-xs font-medium text-slate-600 dark:text-slate-300">
+            {{ insights.status?.master_enabled ? 'Activo' : 'Pausado' }}
+          </span>
+          <input
+            type="checkbox"
+            class="peer sr-only"
+            :checked="insights.status?.master_enabled ?? false"
+            :disabled="!insights.status"
+            aria-label="Interruptor general del análisis de pedidos"
+            @change="insights.setMasterEnabled(($event.target as HTMLInputElement).checked)"
+          />
+          <span
+            class="relative h-5 w-9 rounded-full bg-slate-300 transition-colors peer-checked:bg-indigo-500 peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-400 dark:bg-slate-700"
+            aria-hidden="true"
+          >
+            <span class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4" />
+          </span>
+        </label>
+      </div>
+
+      <div v-if="insights.statusLoading && !insights.status" class="mt-4 space-y-2">
+        <div class="h-4 w-1/3 animate-pulse rounded bg-slate-200 dark:bg-slate-800" />
+      </div>
+
+      <div v-else-if="!insights.status" class="mt-4 rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-500 dark:bg-slate-800/40 dark:text-slate-400">
+        El módulo de análisis no está habilitado en el servidor.
+      </div>
+
+      <template v-else>
+        <!-- salud del modelo: si no está, el usuario tiene que saberlo -->
+        <p
+          class="mt-4 flex items-start gap-2 rounded-lg px-3 py-2 text-xs"
+          :class="insights.health === 'ok'
+            ? 'bg-emerald-500/10 text-emerald-800 dark:text-emerald-300'
+            : insights.health === 'degraded'
+              ? 'bg-amber-500/10 text-amber-800 dark:text-amber-300'
+              : 'bg-slate-500/10 text-slate-600 dark:text-slate-300'"
+        >
+          <span
+            class="material-symbols-outlined mt-px shrink-0"
+            aria-hidden="true"
+          >{{ insights.health === 'ok' ? 'check_circle' : insights.health === 'degraded' ? 'warning' : 'pause_circle' }}</span>
+          <span v-if="insights.health === 'off'">El análisis está pausado. No se está leyendo ninguna conversación.</span>
+          <span v-else-if="!insights.modelReady">
+            El modelo <code class="font-mono">{{ insights.status.model }}</code> no está cargado en Ollama.
+            Bajalo con <code class="font-mono">ollama pull {{ insights.status.model }}</code>; mientras tanto los
+            mensajes quedan en cola.
+          </span>
+          <span v-else-if="insights.modelReady && insights.health === 'degraded'">
+            Listo con <code class="font-mono">{{ insights.status.model }}</code>, pero hay
+            {{ insights.counts?.error }} mensajes con error.
+          </span>
+          <span v-else>
+            Listo con <code class="font-mono">{{ insights.status.model }}</code>
+            <template v-if="insights.counts?.needs_review"> · {{ insights.counts.needs_review }} para revisar</template>
+            <template v-if="insights.queueBusy"> · {{ insights.queueBusy }} en cola</template>
+          </span>
+        </p>
+
+        <!-- contadores -->
+        <dl class="mt-4 grid grid-cols-3 gap-2 sm:grid-cols-6">
+          <div
+            v-for="k in [
+              { label: 'Analizados', value: insights.counts?.ok ?? 0, tone: '' },
+              { label: 'Pendientes', value: insights.counts?.pending ?? 0, tone: '' },
+              { label: 'Procesando', value: insights.counts?.processing ?? 0, tone: '' },
+              { label: 'Omitidos', value: insights.counts?.skipped ?? 0, tone: '' },
+              { label: 'Con error', value: insights.counts?.error ?? 0, tone: 'text-red-600 dark:text-red-400' },
+              { label: 'Para revisar', value: insights.counts?.needs_review ?? 0, tone: 'text-amber-600 dark:text-amber-400' },
+            ]"
+            :key="k.label"
+            class="rounded-lg bg-slate-50 px-2.5 py-2 text-center dark:bg-slate-800/50"
+          >
+            <dd class="text-lg font-semibold tabular-nums" :class="k.tone">{{ k.value }}</dd>
+            <dt class="text-[10px] tracking-wide text-slate-500 uppercase dark:text-slate-400">{{ k.label }}</dt>
+          </div>
+        </dl>
+
+        <!-- notas de voz -->
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-3 dark:border-slate-800">
+          <div>
+            <p class="text-sm font-medium text-slate-700 dark:text-slate-200">Notas de voz</p>
+            <p class="text-xs text-slate-500 dark:text-slate-400">
+              Transcribe los audios con Whisper local ({{ insights.status.asr_model }}) y después analiza el texto.
+            </p>
+          </div>
+          <label class="flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              class="peer sr-only"
+              :checked="insights.status.asr_enabled"
+              aria-label="Transcribir notas de voz"
+              @change="insights.setASREnabled(($event.target as HTMLInputElement).checked)"
+            />
+            <span
+              class="relative h-5 w-9 rounded-full bg-slate-300 transition-colors peer-checked:bg-emerald-500 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-400 dark:bg-slate-700"
+              aria-hidden="true"
+            >
+              <span class="absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4" />
+            </span>
+          </label>
+        </div>
+
+        <!-- por canal -->
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <span class="text-xs text-slate-500 dark:text-slate-400">Canales:</span>
+          <button
+            v-for="c in insights.status.channels"
+            :key="c.channel"
+            class="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors"
+            :class="c.enabled
+              ? 'bg-indigo-500/10 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300'
+              : 'bg-slate-500/10 text-slate-500 dark:text-slate-400'"
+            :aria-pressed="c.enabled"
+            @click="insights.setChannelEnabled(c.channel, !c.enabled)"
+          >
+            <span class="capitalize">{{ c.channel }}</span>
+            <span class="material-symbols-outlined text-[13px]" aria-hidden="true">
+              {{ c.enabled ? 'toggle_on' : 'toggle_off' }}
+            </span>
+          </button>
+
+          <Button
+            class="ml-auto"
+            size="sm"
+            variant="secondary"
+            :disabled="!insights.status.master_enabled"
+            @click="insights.backfill()"
+          >
+            Analizar lo que falta
+          </Button>
+        </div>
+      </template>
+    </section>
 
     <div v-if="store.loading" class="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
       <div

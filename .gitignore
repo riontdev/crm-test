@@ -4,4 +4,5 @@ dist/
 /tmp/
 backend/tmp/
 frontend/dist/
+docker/backups/
 *.log

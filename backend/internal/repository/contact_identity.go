@@ -10,16 +10,16 @@ import (
 )
 
 type ContactIdentity struct {
-	ID               uuid.UUID  `db:"id"`
-	ContactID        uuid.UUID  `db:"contact_id"`
-	Channel          string     `db:"channel"`
-	Provider         string     `db:"provider"`
-	ExternalID       string     `db:"external_id"`
-	ProviderUsername *string    `db:"provider_username"`
-	ProviderName     *string    `db:"provider_name"`
-	ProviderAvatar   *string    `db:"provider_avatar"`
-	CreatedAt        time.Time  `db:"created_at"`
-	UpdatedAt        time.Time  `db:"updated_at"`
+	ID               uuid.UUID `db:"id"`
+	ContactID        uuid.UUID `db:"contact_id"`
+	Channel          string    `db:"channel"`
+	Provider         string    `db:"provider"`
+	ExternalID       string    `db:"external_id"`
+	ProviderUsername *string   `db:"provider_username"`
+	ProviderName     *string   `db:"provider_name"`
+	ProviderAvatar   *string   `db:"provider_avatar"`
+	CreatedAt        time.Time `db:"created_at"`
+	UpdatedAt        time.Time `db:"updated_at"`
 }
 
 type ContactIdentityRepository struct {

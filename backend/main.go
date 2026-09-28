@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,19 +12,23 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/riont/crm/backend/internal/agent"
+	"github.com/riont/crm/backend/internal/asr"
 	"github.com/riont/crm/backend/internal/auth"
 	"github.com/riont/crm/backend/internal/config"
 	"github.com/riont/crm/backend/internal/database"
 	"github.com/riont/crm/backend/internal/handlers"
+	"github.com/riont/crm/backend/internal/insight"
+	"github.com/riont/crm/backend/internal/logging"
 	"github.com/riont/crm/backend/internal/repository"
 	"github.com/riont/crm/backend/internal/sse"
 	"github.com/riont/crm/backend/internal/zernio"
 )
 
 // appVersion identifies the deployed build; bump to force/verify deploys.
-const appVersion = "1.4.0"
+const appVersion = "1.5.0"
 
 func main() {
+	log := logging.Setup()
 	cfg := config.Load()
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -34,15 +36,15 @@ func main() {
 
 	// Run migrations (non-fatal: server starts even if DB is down)
 	if err := database.Migrate(cfg.DatabaseURL); err != nil {
-		log.Printf("WARNING: Migration failed: %v (server will start anyway)", err)
+		log.Warn("migración falló, el servidor arranca igual", "err", err)
 	} else {
-		log.Println("Migrations applied successfully")
+		log.Info("migraciones aplicadas")
 	}
 
 	// Create connection pool
 	pool, err := database.NewPool(ctx)
 	if err != nil {
-		log.Printf("WARNING: Failed to connect to database: %v (server will start anyway)", err)
+		log.Warn("no se pudo conectar a la base, el servidor arranca igual", "err", err)
 	}
 
 	// Initialize repositories
@@ -101,6 +103,60 @@ func main() {
 		webhookHandler.SetAfterMessage(agentWH.AfterMessageReceived)
 	}
 
+	// Analisis de pedidos con IA local (Fase 19/20).
+	//
+	// Se arma FUERA del if de pool para que el servidor no muera si falta la
+	// DB: /api/insights responde 503 y el inbox sigue andando. Es la misma
+	// politica que el resto del sistema.
+	var insightSvc *insight.Service
+	var insightHandler *handlers.InsightHandler
+	if pool != nil && cfg.InsightEnabled {
+		insightRepo := insight.NewRepository(pool)
+		catalogRepo := insight.NewCatalogRepository(insightRepo)
+
+		llm := insight.NewOllamaClient(cfg.OllamaBaseURL, cfg.OllamaModel, cfg.OllamaTimeout, log)
+		asrClient := asr.NewClient(cfg.ASRBaseURL, cfg.WhisperModel, cfg.ASRTimeout, log)
+		mediaFetcher := asr.NewFetcher(cfg.ZernioAPIKey, cfg.ASRDownloadTime)
+
+		insightSvc = insight.NewService(insight.ServiceDeps{
+			Repo:        insightRepo,
+			Catalog:     catalogRepo,
+			LLM:         llm,
+			ASR:         asrClient,
+			Fetcher:     mediaFetcher,
+			SSE:         sseHub,
+			Logger:      log,
+			TextWorkers: cfg.TextWorkers,
+		})
+		insightSvc.Start(ctx)
+		// El orden importa: Stop() ESPERA a que los workers terminen, y los
+		// workers solo terminan cuando ven ctx.Done(). Con dos defers sueltos,
+		// el LIFO ejecuta Stop() antes que cancel() y el apagado se queda
+		// colgado para siempre. Un solo defer, en el orden correcto.
+		defer func() {
+			cancel()
+			insightSvc.Stop()
+		}()
+
+		insightHandler = handlers.NewInsightHandler(insightSvc, insightRepo, catalogRepo, log)
+		inboxHandler.SetInsightRepo(insightRepo)
+		// El handler de insights necesita el hub para avisar cuando un humano
+		// aplica o reabre un pedido. Sin esto la bandeja se entera del cambio
+		// solo en el proximo refetch.
+		insightHandler.SetSSE(sseHub)
+
+		// El analisis se encola, nunca se ejecuta aca: el webhook tiene 5
+		// segundos para devolver 2xx y un POST a Ollama puede tardar 30.
+		webhookHandler.SetAfterPersist(insightSvc.EnqueueAfterMessage)
+
+		log.Info("analisis de pedidos habilitado",
+			"ollama", cfg.OllamaBaseURL, "model", cfg.OllamaModel,
+			"asr", cfg.ASRBaseURL, "whisper", cfg.WhisperModel,
+			"text_workers", cfg.TextWorkers)
+	} else if !cfg.InsightEnabled {
+		log.Info("analisis de pedidos DESHABILITADO por config (INSIGHT_ENABLED=false)")
+	}
+
 	// Echo setup
 	e := echo.New()
 	e.HideBanner = true
@@ -137,15 +193,16 @@ func main() {
 	})
 
 	// SSE endpoint for real-time updates (moved to protected group below)
-	// File upload handler
+	// File upload + serve handlers (MinIO)
 	uploadHandler := handlers.NewUploadHandler()
+	filesHandler := handlers.NewFilesHandler()
 
 	// Auth service + handler (works with nil pool: handlers respond 503)
 	userService := auth.NewUserService(pool)
 	authHandler := handlers.NewAuthHandler(userService)
 
 	if os.Getenv("AUTH_JWT_SECRET") == "" {
-		log.Printf("WARN: AUTH_JWT_SECRET no configurada — el login estará deshabilitado")
+		log.Warn("AUTH_JWT_SECRET no configurada: el login va a estar deshabilitado")
 	}
 
 	// Public auth endpoints
@@ -159,6 +216,7 @@ func main() {
 
 	protected.GET("/events", sseHub.ServeHTTP)
 	protected.POST("/upload", uploadHandler.Upload)
+	protected.GET("/files/*", filesHandler.Serve)
 
 	// Media proxy: fetches Zernio media URLs and serves them to the frontend
 	protected.GET("/media", func(c echo.Context) error {
@@ -234,6 +292,34 @@ func main() {
 		protected.GET("/channels/status", channelsHandler.Status)
 	}
 
+	// Analisis de pedidos, catalogo y pedidos consolidados
+	if insightHandler != nil {
+		insights := protected.Group("/insights")
+		insights.GET("/status", insightHandler.Status)
+		insights.GET("/messages/:id", insightHandler.GetMessageAnalysis)
+		insights.GET("/conversation/:id", insightHandler.GetConversation)
+		insights.PATCH("/settings/:key", insightHandler.UpdateSettings)
+		insights.PATCH("/config/:channel", insightHandler.UpdateChannelConfig)
+		insights.POST("/backfill", insightHandler.Backfill)
+
+		orders := protected.Group("/orders")
+		orders.GET("", insightHandler.ListOrders)
+		orders.GET("/:id", insightHandler.GetOrder)
+		orders.PATCH("/:id", insightHandler.UpdateOrder)
+		orders.PATCH("/:id/status", insightHandler.SetOrderStatus)
+		// Aplicar y reabrir son POST y no PATCH porque no editan un recurso:
+		// ejecutan una transicion (crear la revision siguiente / sacar el sello de
+		// edicion). Un PATCH sin cuerpo seria ambiguo con el PATCH de correccion.
+		orders.POST("/:id/accept-pending", insightHandler.AcceptPending)
+		orders.POST("/:id/reopen", insightHandler.ReopenOrder)
+
+		catalog := protected.Group("/catalog")
+		catalog.GET("", insightHandler.ListCatalog)
+		catalog.POST("", insightHandler.CreateCatalogItem)
+		catalog.PATCH("/:id", insightHandler.UpdateCatalogItem)
+		catalog.DELETE("/:id", insightHandler.DeleteCatalogItem)
+	}
+
 	// Users management API (admin only)
 	users := protected.Group("/users", auth.RequireRole("admin"))
 	users.GET("", authHandler.ListUsers)
@@ -251,17 +337,18 @@ func main() {
 
 	go func() {
 		<-quit
-		fmt.Println("Shutting down server...")
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		log.Info("apagando el servidor")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		if err := e.Shutdown(ctx); err != nil {
-			log.Fatal(err)
+		if err := e.Shutdown(shutdownCtx); err != nil {
+			log.Error("apagado con error", "err", err)
 		}
 	}()
 
 	addr := ":" + cfg.Port
-	fmt.Printf("Server starting on %s\n", addr)
+	log.Info("servidor escuchando", "addr", addr, "version", appVersion)
 	if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
-		log.Fatal(err)
+		log.Error("el servidor no pudo arrancar", "err", err)
+		os.Exit(1)
 	}
 }

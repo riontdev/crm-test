@@ -40,6 +40,16 @@ const router = createRouter({
       meta: { title: 'Agentes IA', requiresAuth: true },
     },
     {
+      path: '/orders',
+      name: 'orders',
+      component: () => import('@/views/OrdersView.vue'),
+    },
+    {
+      path: '/catalog',
+      name: 'catalog',
+      component: () => import('@/views/CatalogView.vue'),
+    },
+    {
       path: '/channels',
       name: 'channels',
       component: () => import('@/views/ChannelsView.vue'),

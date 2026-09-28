@@ -4,10 +4,12 @@ import { api, type ConversationDetail } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
 import { useUiStore } from '@/stores/ui'
 import { useUsersStore } from '@/stores/users'
+import { useInsightsStore } from '@/stores/insights'
 import Avatar from '@/components/ui/Avatar.vue'
 import Badge from '@/components/ui/Badge.vue'
 import Button from '@/components/ui/Button.vue'
 import ChannelBadge from '@/components/ui/ChannelBadge.vue'
+import OrderCard from '@/components/chat/OrderCard.vue'
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue'
 
 interface Props {
@@ -20,6 +22,7 @@ const emit = defineEmits<{ close: []; archived: [] }>()
 
 const ui = useUiStore()
 const usersStore = useUsersStore()
+const insights = useInsightsStore()
 
 const showArchiveConfirm = ref(false)
 const archiving = ref(false)
@@ -66,14 +69,35 @@ const savingAssignee = ref(false)
 
 watch(
   () => props.conversation?.id,
-  () => {
+  (id) => {
     showArchiveConfirm.value = false
     archiveError.value = null
     origAssigned.value = props.conversation?.assigned_to?.id ?? ''
     assigneeDraft.value = origAssigned.value
+    // El pedido vive en otro endpoint: se pide solo cuando hay hilo abierto y
+    // el modulo esta prendido. Un fetch por conversacion, no uno por render.
+    void loadOrder(id)
   },
   { immediate: true },
 )
+
+// Segundo watch solo por el estado del modulo. Sin esto el pedido no se pide
+// NUNCA en la primera carga: al montar, status todavia es null, enabled da
+// false, y cuando la respuesta llega ya nobody vuelve a mirar.
+watch(
+  () => insights.enabled,
+  (on) => {
+    if (on) void loadOrder(props.conversation?.id)
+  },
+)
+
+/**
+ * Pide el pedido del hilo. fetchConversation ya no pide si hay cache, asi que
+ * este watch puede dispararse dos veces sin traer el doble.
+ */
+async function loadOrder(id: string | undefined) {
+  if (id && insights.enabled) await insights.fetchConversation(id)
+}
 
 const contact = computed(() => props.conversation?.contact)
 const isArchived = computed(() => props.conversation?.status === 'archived')
@@ -82,6 +106,9 @@ const usersOptions = computed(() => usersStore.users)
 
 onMounted(() => {
   if (usersStore.users.length === 0) void usersStore.fetchUsers()
+  // El status global se pide una vez: sin el, `insights.enabled` es false y el
+  // panel esconderia el pedido de un sistema que si lo tiene prendido.
+  if (!insights.status) void insights.fetchStatus()
 })
 
 async function onAssigneeChange() {
@@ -187,6 +214,39 @@ async function handleArchive() {
         <div class="flex flex-wrap gap-1.5">
           <Badge v-for="tag in contact?.tags" :key="tag" variant="accent" size="sm">{{ tag }}</Badge>
         </div>
+      </section>
+
+      <!-- Pedido detectado por la IA -->
+      <section>
+        <h4 class="mb-2 flex items-center justify-between text-[11px] font-semibold tracking-wider text-slate-400 uppercase dark:text-slate-500">
+          Pedido
+          <label class="flex cursor-pointer items-center gap-1.5 normal-case tracking-normal">
+            <input
+              v-if="props.conversation"
+              :checked="insights.isEnabledFor(props.conversation)"
+              type="checkbox"
+              class="rounded"
+              :aria-label="`Analizar este hilo con IA`"
+              @change="insights.setConversationEnabled(props.conversation.id, ($event.target as HTMLInputElement).checked)"
+            />
+            <span>{{ insights.isEnabledFor(props.conversation) ? 'IA' : 'Pausado' }}</span>
+          </label>
+        </h4>
+        <p v-if="!insights.enabled" class="mb-2 text-xs text-slate-400 dark:text-slate-500">
+          El análisis está apagado globalmente.
+        </p>
+        <OrderCard
+          v-if="insights.enabled"
+          :order="insights.orderFor(props.conversation?.id ?? '')"
+          :loading="insights.loadingConversation.has(props.conversation?.id ?? '')"
+        />
+        <button
+          v-else-if="insights.enabled && props.conversation"
+          class="mt-1.5 text-[11px] text-sky-600 underline-offset-2 hover:underline dark:text-sky-400"
+          @click="insights.backfill(props.conversation!.id)"
+        >
+          Analizar los mensajes de este hilo
+        </button>
       </section>
 
       <!-- Responsable -->

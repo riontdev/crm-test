@@ -6,6 +6,7 @@ import type { Conversation } from '@/lib/api'
 import { relativeTime } from '@/lib/utils'
 import Avatar from '@/components/ui/Avatar.vue'
 import ChannelBadge from '@/components/ui/ChannelBadge.vue'
+import OrderBadge from '@/components/chat/OrderBadge.vue'
 import Skeleton from '@/components/ui/Skeleton.vue'
 import EmptyState from '@/components/ui/EmptyState.vue'
 
@@ -237,8 +238,15 @@ onUnmounted(() => {
               </span>
             </div>
 
-            <div class="mt-0.5">
+            <div class="mt-0.5 flex flex-wrap items-center gap-1.5">
               <ChannelBadge :channel="conv.channel" />
+              <OrderBadge
+                v-if="conv.order_intent"
+                :intent="conv.order_intent"
+                :needs-review="conv.order_needs_review"
+                :pending="conv.order_pending"
+                size="sm"
+              />
             </div>
 
             <p class="mt-0.5 truncate text-xs text-slate-500 dark:text-slate-400">

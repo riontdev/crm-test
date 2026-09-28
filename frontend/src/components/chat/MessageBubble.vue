@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { Message } from '@/lib/api'
+import type { Message, MessageAnalysis } from '@/lib/api'
 import { cn, formatTime } from '@/lib/utils'
 
 interface Props {
   message: Message
   channel?: string
+  /** Lo pasa ConversationView desde el store: una request por mensaje seria
+   *  50 requests por abrir un hilo. */
+  analysis?: MessageAnalysis | null
 }
 
 const props = defineProps<Props>()
@@ -103,6 +106,26 @@ const timestamp = computed(() => formatTime(props.message.sent_at || props.messa
       </div>
 
       <p v-if="message.text" class="whitespace-pre-wrap break-words text-sm">{{ message.text }}</p>
+
+      <!-- Lectura automatica: solo incoming. Es informacion para el operador,
+           jamas se envia al cliente. -->
+      <div
+        v-if="analysis && message.direction === 'incoming'"
+        class="mt-2 space-y-1.5 border-t border-current/10 pt-2 text-[11px] opacity-90"
+      >
+        <p v-if="analysis.asr_text" class="italic">
+          <span class="material-symbols-outlined align-text-bottom text-[12px]" aria-hidden="true">graphic_eq</span>
+          {{ analysis.asr_text }}
+        </p>
+        <p v-if="analysis.resumen" class="flex flex-wrap items-center gap-1.5">
+          <span class="font-semibold uppercase tracking-wide opacity-70">IA</span>
+          <span class="min-w-0 flex-1">{{ analysis.resumen }}</span>
+        </p>
+        <p v-if="analysis.status === 'processing'" class="flex items-center gap-1.5 opacity-70">
+          <span class="material-symbols-outlined animate-spin text-[12px]" aria-hidden="true">progress_activity</span>
+          Analizando…
+        </p>
+      </div>
 
       <div class="mt-1 flex items-center justify-end gap-1">
         <span

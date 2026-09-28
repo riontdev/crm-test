@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useMessagesStore } from '@/stores/messages'
 import { useConversationsStore } from '@/stores/conversations'
+import { useInsightsStore } from '@/stores/insights'
 import { api } from '@/lib/api'
 import { formatDayLabel } from '@/lib/utils'
 import type { Message } from '@/lib/api'
@@ -23,6 +24,16 @@ const route = useRoute()
 const router = useRouter()
 const store = useMessagesStore()
 const conversationsStore = useConversationsStore()
+const insights = useInsightsStore()
+
+/**
+ * Lectura del analisis por mensaje desde el store. Las transcripciones
+ * llegan por SSE cuando Whisper termina, asi que abrir el hilo y esperar el
+ * modelo no son el mismo instante.
+ */
+function analysisForMessage(messageId: string) {
+  return insights.analysisByMessage[messageId] ?? null
+}
 
 const uploading = ref(false)
 const showFab = ref(false)
@@ -87,6 +98,13 @@ function onScroll() {
 onMounted(async () => {
   await load()
   if (conversationId.value) store.subscribe(conversationId.value)
+  // Suscribirse una sola vez: el store de insights se encarga de refrescar
+  // la insight del hilo abierto y de editar los analisis por mensaje.
+  //
+  // Sin el gate de `enabled`: al montar, status todavia es null (lo pide el
+  // panel de contacto) y la condicion daba false, dejando el hilo sin SSE para
+  // toda la sesion. El propio store ignora los eventos si el modulo esta off.
+  insights.subscribe()
   nextTick(() => scrollToBottom())
 })
 
@@ -100,6 +118,7 @@ watch(
     if (id && id !== oldId) {
       await load()
       store.subscribe(id)
+      if (insights.enabled) void insights.fetchConversation(id)
       nextTick(() => scrollToBottom())
     }
   },
@@ -262,6 +281,7 @@ async function handleSend({ text, file }: { text: string; file: File | null }) {
                     :key="msg.id"
                     :message="msg"
                     :channel="store.conversation?.channel"
+                    :analysis="analysisForMessage(msg.id)"
                   />
                 </div>
               </template>

@@ -26,7 +26,7 @@ func NewOpenRouterClient() *OpenRouterClient {
 
 // ChatMessage represents a message in the chat completion request.
 type ChatMessage struct {
-	Role    string `json:"role"`    // system | user | assistant
+	Role    string `json:"role"` // system | user | assistant
 	Content string `json:"content"`
 }
 

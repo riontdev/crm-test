@@ -1,13 +1,19 @@
--- Create storage bucket for message attachments
-INSERT INTO storage.buckets (id, name, public) VALUES ('attachments', 'attachments', true)
-ON CONFLICT (id) DO NOTHING;
+-- Supabase-only: create the storage bucket and policies for message attachments.
+-- On a plain local Postgres the storage schema does not exist, so this is a no-op.
 
--- Allow all uploads (authenticated or anon)
-CREATE POLICY "Allow all uploads" ON storage.objects
-  FOR INSERT
-  WITH CHECK (bucket_id = 'attachments');
+DO $do$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'storage') THEN
+    INSERT INTO storage.buckets (id, name, public) VALUES ('attachments', 'attachments', true)
+    ON CONFLICT (id) DO NOTHING;
 
--- Allow public reads
-CREATE POLICY "Allow public reads" ON storage.objects
-  FOR SELECT
-  USING (bucket_id = 'attachments');
+    CREATE POLICY "Allow all uploads" ON storage.objects
+      FOR INSERT
+      WITH CHECK (bucket_id = 'attachments');
+
+    CREATE POLICY "Allow public reads" ON storage.objects
+      FOR SELECT
+      USING (bucket_id = 'attachments');
+  END IF;
+END
+$do$;

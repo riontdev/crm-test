@@ -45,9 +45,26 @@ func NewWebhookHandler(
 // It invokes the AI agent if enabled for the channel, and sends the reply.
 // This runs asynchronously — the webhook already returned 200.
 func (h *WebhookHandler) AfterMessageReceived(ctx context.Context, conversationID, channel, contactName, messageText string) {
-	// 1. Get conversation history. The incoming message was just persisted,
-	// so drop its duplicate from history before passing it as the current turn.
-	history, err := h.agent.GetHistory(ctx, conversationID, 21)
+	// 0. Skip entirely when the agent is disabled for this channel.
+	enabled, err := h.agent.IsEnabled(ctx, channel)
+	if err != nil {
+		fmt.Printf("agent: failed to check config: %v\n", err)
+		return
+	}
+	if !enabled {
+		return
+	}
+
+	// 1. Resolve the DB conversation (the webhook carries Zernio's id).
+	conv, err := h.conversations.FindByZernioID(ctx, channel, conversationID)
+	if err != nil {
+		fmt.Printf("agent: conversation not found: %v\n", err)
+		return
+	}
+
+	// 2. Get conversation history by DB uuid. The incoming message was just
+	// persisted, so drop its duplicate from history before passing it as the current turn.
+	history, err := h.agent.GetHistory(ctx, conv.ID.String(), 21)
 	if err != nil {
 		fmt.Printf("agent: failed to get history: %v\n", err)
 		return
@@ -59,7 +76,7 @@ func (h *WebhookHandler) AfterMessageReceived(ctx context.Context, conversationI
 		}
 	}
 
-	// 2. Call the agent
+	// 3. Call the agent
 	resp, err := h.agent.ProcessMessage(ctx, AgentRequest{
 		Channel:         channel,
 		ContactName:     contactName,
@@ -86,13 +103,7 @@ func (h *WebhookHandler) AfterMessageReceived(ctx context.Context, conversationI
 		return
 	}
 
-	// 3. Send reply via Zernio
-	conv, err := h.conversations.FindByZernioID(ctx, channel, conversationID)
-	if err != nil {
-		fmt.Printf("agent: conversation not found for reply: %v\n", err)
-		return
-	}
-
+	// 4. Send reply via Zernio
 	text := resp.Reply
 	accountID := ""
 	if conv.ZernioAccountID != nil {
@@ -109,7 +120,7 @@ func (h *WebhookHandler) AfterMessageReceived(ctx context.Context, conversationI
 		return
 	}
 
-	// 4. Persist the outgoing agent message
+	// 5. Persist the outgoing agent message
 	now := time.Now()
 	agentMsg := &repository.Message{
 		ConversationID: conv.ID,
